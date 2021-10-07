@@ -4,9 +4,6 @@
 [submodule "chibios-contrib"]
 	path = lib/chibios-contrib
 	url = https://github.com/qmk/chibios-contrib.git
-[submodule "ugfk"]
-	path = ugfx
-	url = https://github.com/qmk/ugfx.git
 [submodule "ugfx"]
 	path = lib/ugfx
 	url = https://github.com/qmk/ugfx.git
