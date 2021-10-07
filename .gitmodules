@@ -10,3 +10,9 @@
 [submodule "lufa"]
 	path = lib/lufa
 	url = https://github.com/qmk/lufa.git
+[submodule "vusb"]
+	path = lib/vusb
+	url = https://github.com/qmk/v-usb.git
+[submodule "printf"]
+	path = lib/printf
+	url = https://github.com/qmk/printf.git
