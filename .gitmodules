@@ -1,3 +1,6 @@
 [submodule "chibios"]
 	path = lib/chibios
 	url = https://github.com/qmk/chibios.git
+[submodule "chibios-contrib"]
+	path = chibios-contrib
+	url = https://github.com/qmk/chibios-contrib.git
