@@ -1,0 +1,885 @@
+   1               		.file	"split_util.c"
+   2               	__SP_H__ = 0x3e
+   3               	__SP_L__ = 0x3d
+   4               	__SREG__ = 0x3f
+   5               	__tmp_reg__ = 0
+   6               	__zero_reg__ = 1
+   7               		.text
+   8               	.Ltext0:
+   9               		.cfi_sections	.debug_frame
+  10               		.section	.text.is_keyboard_master,"ax",@progbits
+  11               		.weak	is_keyboard_master
+  13               	is_keyboard_master:
+  14               	.LFB29:
+  15               		.file 1 "quantum/split_common/split_util.c"
+   1:quantum/split_common/split_util.c **** /* Copyright 2021 QMK
+   2:quantum/split_common/split_util.c ****  *
+   3:quantum/split_common/split_util.c ****  * This program is free software: you can redistribute it and/or modify
+   4:quantum/split_common/split_util.c ****  * it under the terms of the GNU General Public License as published by
+   5:quantum/split_common/split_util.c ****  * the Free Software Foundation, either version 3 of the License, or
+   6:quantum/split_common/split_util.c ****  * (at your option) any later version.
+   7:quantum/split_common/split_util.c ****  *
+   8:quantum/split_common/split_util.c ****  * This program is distributed in the hope that it will be useful,
+   9:quantum/split_common/split_util.c ****  * but WITHOUT ANY WARRANTY; without even the implied warranty of
+  10:quantum/split_common/split_util.c ****  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+  11:quantum/split_common/split_util.c ****  * GNU General Public License for more details.
+  12:quantum/split_common/split_util.c ****  *
+  13:quantum/split_common/split_util.c ****  * You should have received a copy of the GNU General Public License
+  14:quantum/split_common/split_util.c ****  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
+  15:quantum/split_common/split_util.c ****  */
+  16:quantum/split_common/split_util.c **** #include "split_util.h"
+  17:quantum/split_common/split_util.c **** #include "matrix.h"
+  18:quantum/split_common/split_util.c **** #include "keyboard.h"
+  19:quantum/split_common/split_util.c **** #include "config.h"
+  20:quantum/split_common/split_util.c **** #include "timer.h"
+  21:quantum/split_common/split_util.c **** #include "transport.h"
+  22:quantum/split_common/split_util.c **** #include "quantum.h"
+  23:quantum/split_common/split_util.c **** #include "wait.h"
+  24:quantum/split_common/split_util.c **** #include "usb_util.h"
+  25:quantum/split_common/split_util.c **** 
+  26:quantum/split_common/split_util.c **** #ifdef EE_HANDS
+  27:quantum/split_common/split_util.c **** #    include "eeconfig.h"
+  28:quantum/split_common/split_util.c **** #endif
+  29:quantum/split_common/split_util.c **** 
+  30:quantum/split_common/split_util.c **** #if defined(RGBLIGHT_ENABLE) && defined(RGBLED_SPLIT)
+  31:quantum/split_common/split_util.c **** #    include "rgblight.h"
+  32:quantum/split_common/split_util.c **** #endif
+  33:quantum/split_common/split_util.c **** 
+  34:quantum/split_common/split_util.c **** #ifndef SPLIT_USB_TIMEOUT
+  35:quantum/split_common/split_util.c **** #    define SPLIT_USB_TIMEOUT 2000
+  36:quantum/split_common/split_util.c **** #endif
+  37:quantum/split_common/split_util.c **** 
+  38:quantum/split_common/split_util.c **** #ifndef SPLIT_USB_TIMEOUT_POLL
+  39:quantum/split_common/split_util.c **** #    define SPLIT_USB_TIMEOUT_POLL 10
+  40:quantum/split_common/split_util.c **** #endif
+  41:quantum/split_common/split_util.c **** 
+  42:quantum/split_common/split_util.c **** // Max number of consecutive failed communications (one per scan cycle) before the communication is
+  43:quantum/split_common/split_util.c **** // Set to 0 to disable the disconnection check altogether.
+  44:quantum/split_common/split_util.c **** #ifndef SPLIT_MAX_CONNECTION_ERRORS
+  45:quantum/split_common/split_util.c **** #    define SPLIT_MAX_CONNECTION_ERRORS 10
+  46:quantum/split_common/split_util.c **** #endif  // SPLIT_MAX_CONNECTION_ERRORS
+  47:quantum/split_common/split_util.c **** 
+  48:quantum/split_common/split_util.c **** // How long (in milliseconds) to block all connection attempts after the communication has been fla
+  49:quantum/split_common/split_util.c **** // One communication attempt will be allowed everytime this amount of time has passed since the las
+  50:quantum/split_common/split_util.c **** // Set to 0 to disable communication throttling while disconnected
+  51:quantum/split_common/split_util.c **** #ifndef SPLIT_CONNECTION_CHECK_TIMEOUT
+  52:quantum/split_common/split_util.c **** #    define SPLIT_CONNECTION_CHECK_TIMEOUT 500
+  53:quantum/split_common/split_util.c **** #endif  // SPLIT_CONNECTION_CHECK_TIMEOUT
+  54:quantum/split_common/split_util.c **** 
+  55:quantum/split_common/split_util.c **** static uint8_t connection_errors = 0;
+  56:quantum/split_common/split_util.c **** 
+  57:quantum/split_common/split_util.c **** volatile bool isLeftHand = true;
+  58:quantum/split_common/split_util.c **** 
+  59:quantum/split_common/split_util.c **** #if defined(SPLIT_USB_DETECT)
+  60:quantum/split_common/split_util.c **** static bool usbIsActive(void) {
+  61:quantum/split_common/split_util.c ****     for (uint8_t i = 0; i < (SPLIT_USB_TIMEOUT / SPLIT_USB_TIMEOUT_POLL); i++) {
+  62:quantum/split_common/split_util.c ****         // This will return true if a USB connection has been established
+  63:quantum/split_common/split_util.c ****         if (usb_connected_state()) {
+  64:quantum/split_common/split_util.c ****             return true;
+  65:quantum/split_common/split_util.c ****         }
+  66:quantum/split_common/split_util.c ****         wait_ms(SPLIT_USB_TIMEOUT_POLL);
+  67:quantum/split_common/split_util.c ****     }
+  68:quantum/split_common/split_util.c ****     return false;
+  69:quantum/split_common/split_util.c **** }
+  70:quantum/split_common/split_util.c **** #else
+  71:quantum/split_common/split_util.c **** static inline bool usbIsActive(void) { return usb_vbus_state(); }
+  72:quantum/split_common/split_util.c **** #endif
+  73:quantum/split_common/split_util.c **** 
+  74:quantum/split_common/split_util.c **** #ifdef SPLIT_HAND_MATRIX_GRID
+  75:quantum/split_common/split_util.c **** void matrix_io_delay(void);
+  76:quantum/split_common/split_util.c **** 
+  77:quantum/split_common/split_util.c **** static uint8_t peek_matrix_intersection(pin_t out_pin, pin_t in_pin) {
+  78:quantum/split_common/split_util.c ****     setPinInputHigh(in_pin);
+  79:quantum/split_common/split_util.c ****     setPinOutput(out_pin);
+  80:quantum/split_common/split_util.c ****     writePinLow(out_pin);
+  81:quantum/split_common/split_util.c ****     // It's almost unnecessary, but wait until it's down to low, just in case.
+  82:quantum/split_common/split_util.c ****     wait_us(1);
+  83:quantum/split_common/split_util.c ****     uint8_t pin_state = readPin(in_pin);
+  84:quantum/split_common/split_util.c ****     // Set out_pin to a setting that is less susceptible to noise.
+  85:quantum/split_common/split_util.c ****     setPinInputHigh(out_pin);
+  86:quantum/split_common/split_util.c ****     matrix_io_delay();  // Wait for the pull-up to go HIGH.
+  87:quantum/split_common/split_util.c ****     return pin_state;
+  88:quantum/split_common/split_util.c **** }
+  89:quantum/split_common/split_util.c **** #endif
+  90:quantum/split_common/split_util.c **** 
+  91:quantum/split_common/split_util.c **** __attribute__((weak)) bool is_keyboard_left(void) {
+  92:quantum/split_common/split_util.c **** #if defined(SPLIT_HAND_PIN)
+  93:quantum/split_common/split_util.c ****     // Test pin SPLIT_HAND_PIN for High/Low, if low it's right hand
+  94:quantum/split_common/split_util.c ****     setPinInput(SPLIT_HAND_PIN);
+  95:quantum/split_common/split_util.c **** #    ifdef SPLIT_HAND_PIN_LOW_IS_LEFT
+  96:quantum/split_common/split_util.c ****     return !readPin(SPLIT_HAND_PIN);
+  97:quantum/split_common/split_util.c **** #    else
+  98:quantum/split_common/split_util.c ****     return readPin(SPLIT_HAND_PIN);
+  99:quantum/split_common/split_util.c **** #    endif
+ 100:quantum/split_common/split_util.c **** #elif defined(SPLIT_HAND_MATRIX_GRID)
+ 101:quantum/split_common/split_util.c **** #    ifdef SPLIT_HAND_MATRIX_GRID_LOW_IS_RIGHT
+ 102:quantum/split_common/split_util.c ****     return peek_matrix_intersection(SPLIT_HAND_MATRIX_GRID);
+ 103:quantum/split_common/split_util.c **** #    else
+ 104:quantum/split_common/split_util.c ****     return !peek_matrix_intersection(SPLIT_HAND_MATRIX_GRID);
+ 105:quantum/split_common/split_util.c **** #    endif
+ 106:quantum/split_common/split_util.c **** #elif defined(EE_HANDS)
+ 107:quantum/split_common/split_util.c ****     return eeconfig_read_handedness();
+ 108:quantum/split_common/split_util.c **** #elif defined(MASTER_RIGHT)
+ 109:quantum/split_common/split_util.c ****     return !is_keyboard_master();
+ 110:quantum/split_common/split_util.c **** #endif
+ 111:quantum/split_common/split_util.c **** 
+ 112:quantum/split_common/split_util.c ****     return is_keyboard_master();
+ 113:quantum/split_common/split_util.c **** }
+ 114:quantum/split_common/split_util.c **** 
+ 115:quantum/split_common/split_util.c **** __attribute__((weak)) bool is_keyboard_master(void) {
+  16               		.loc 1 115 53 view -0
+  17               		.cfi_startproc
+  18 0000 CF93      		push r28
+  19               	.LCFI0:
+  20               		.cfi_def_cfa_offset 3
+  21               		.cfi_offset 28, -2
+  22               	/* prologue: function */
+  23               	/* frame size = 0 */
+  24               	/* stack size = 1 */
+  25               	.L__stack_usage = 1
+ 116:quantum/split_common/split_util.c ****     static enum { UNKNOWN, MASTER, SLAVE } usbstate = UNKNOWN;
+  26               		.loc 1 116 5 view .LVU1
+ 117:quantum/split_common/split_util.c **** 
+ 118:quantum/split_common/split_util.c ****     // only check once, as this is called often
+ 119:quantum/split_common/split_util.c ****     if (usbstate == UNKNOWN) {
+  27               		.loc 1 119 5 view .LVU2
+  28               		.loc 1 119 8 is_stmt 0 view .LVU3
+  29 0002 8091 0000 		lds r24,usbstate.3
+  30 0006 8111      		cpse r24,__zero_reg__
+  31 0008 00C0      		rjmp .L2
+  32 000a C8EC      		ldi r28,lo8(-56)
+  33               	.L4:
+  34               	.LVL0:
+  35               	.LBB10:
+  36               	.LBB11:
+  63:quantum/split_common/split_util.c ****             return true;
+  37               		.loc 1 63 9 is_stmt 1 view .LVU4
+  63:quantum/split_common/split_util.c ****             return true;
+  38               		.loc 1 63 13 is_stmt 0 view .LVU5
+  39 000c 0E94 0000 		call usb_connected_state
+  40               	.LVL1:
+  63:quantum/split_common/split_util.c ****             return true;
+  41               		.loc 1 63 12 view .LVU6
+  42 0010 8111      		cpse r24,__zero_reg__
+  43 0012 00C0      		rjmp .L3
+  66:quantum/split_common/split_util.c ****     }
+  44               		.loc 1 66 9 is_stmt 1 view .LVU7
+  66:quantum/split_common/split_util.c ****     }
+  45               		.loc 1 66 9 view .LVU8
+  66:quantum/split_common/split_util.c ****     }
+  46               		.loc 1 66 9 view .LVU9
+  47               	.LVL2:
+  48               	.LBB12:
+  49               	.LBI12:
+  50               		.file 2 "/usr/avr/include/util/delay.h"
+   1:/usr/avr/include/util/delay.h **** /* Copyright (c) 2002, Marek Michalkiewicz
+   2:/usr/avr/include/util/delay.h ****    Copyright (c) 2004,2005,2007 Joerg Wunsch
+   3:/usr/avr/include/util/delay.h ****    Copyright (c) 2007  Florin-Viorel Petrov
+   4:/usr/avr/include/util/delay.h ****    All rights reserved.
+   5:/usr/avr/include/util/delay.h **** 
+   6:/usr/avr/include/util/delay.h ****    Redistribution and use in source and binary forms, with or without
+   7:/usr/avr/include/util/delay.h ****    modification, are permitted provided that the following conditions are met:
+   8:/usr/avr/include/util/delay.h **** 
+   9:/usr/avr/include/util/delay.h ****    * Redistributions of source code must retain the above copyright
+  10:/usr/avr/include/util/delay.h ****      notice, this list of conditions and the following disclaimer.
+  11:/usr/avr/include/util/delay.h **** 
+  12:/usr/avr/include/util/delay.h ****    * Redistributions in binary form must reproduce the above copyright
+  13:/usr/avr/include/util/delay.h ****      notice, this list of conditions and the following disclaimer in
+  14:/usr/avr/include/util/delay.h ****      the documentation and/or other materials provided with the
+  15:/usr/avr/include/util/delay.h ****      distribution.
+  16:/usr/avr/include/util/delay.h **** 
+  17:/usr/avr/include/util/delay.h ****    * Neither the name of the copyright holders nor the names of
+  18:/usr/avr/include/util/delay.h ****      contributors may be used to endorse or promote products derived
+  19:/usr/avr/include/util/delay.h ****      from this software without specific prior written permission.
+  20:/usr/avr/include/util/delay.h **** 
+  21:/usr/avr/include/util/delay.h ****   THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+  22:/usr/avr/include/util/delay.h ****   AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+  23:/usr/avr/include/util/delay.h ****   IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+  24:/usr/avr/include/util/delay.h ****   ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER OR CONTRIBUTORS BE
+  25:/usr/avr/include/util/delay.h ****   LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
+  26:/usr/avr/include/util/delay.h ****   CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
+  27:/usr/avr/include/util/delay.h ****   SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
+  28:/usr/avr/include/util/delay.h ****   INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
+  29:/usr/avr/include/util/delay.h ****   CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
+  30:/usr/avr/include/util/delay.h ****   ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
+  31:/usr/avr/include/util/delay.h ****   POSSIBILITY OF SUCH DAMAGE. */
+  32:/usr/avr/include/util/delay.h **** 
+  33:/usr/avr/include/util/delay.h **** /* $Id: delay.h.in 2506 2016-02-08 10:05:45Z joerg_wunsch $ */
+  34:/usr/avr/include/util/delay.h **** 
+  35:/usr/avr/include/util/delay.h **** #ifndef _UTIL_DELAY_H_
+  36:/usr/avr/include/util/delay.h **** #define _UTIL_DELAY_H_ 1
+  37:/usr/avr/include/util/delay.h **** 
+  38:/usr/avr/include/util/delay.h **** #ifndef __DOXYGEN__
+  39:/usr/avr/include/util/delay.h **** #  ifndef __HAS_DELAY_CYCLES
+  40:/usr/avr/include/util/delay.h **** #    define __HAS_DELAY_CYCLES 1
+  41:/usr/avr/include/util/delay.h **** #  endif
+  42:/usr/avr/include/util/delay.h **** #endif  /* __DOXYGEN__ */
+  43:/usr/avr/include/util/delay.h **** 
+  44:/usr/avr/include/util/delay.h **** #include <inttypes.h>
+  45:/usr/avr/include/util/delay.h **** #include <util/delay_basic.h>
+  46:/usr/avr/include/util/delay.h **** #include <math.h>
+  47:/usr/avr/include/util/delay.h **** 
+  48:/usr/avr/include/util/delay.h **** /** \file */
+  49:/usr/avr/include/util/delay.h **** /** \defgroup util_delay <util/delay.h>: Convenience functions for busy-wait delay loops
+  50:/usr/avr/include/util/delay.h ****     \code
+  51:/usr/avr/include/util/delay.h ****     #define F_CPU 1000000UL  // 1 MHz
+  52:/usr/avr/include/util/delay.h ****     //#define F_CPU 14.7456E6
+  53:/usr/avr/include/util/delay.h ****     #include <util/delay.h>
+  54:/usr/avr/include/util/delay.h ****     \endcode
+  55:/usr/avr/include/util/delay.h **** 
+  56:/usr/avr/include/util/delay.h ****     \note As an alternative method, it is possible to pass the
+  57:/usr/avr/include/util/delay.h ****     F_CPU macro down to the compiler from the Makefile.
+  58:/usr/avr/include/util/delay.h ****     Obviously, in that case, no \c \#define statement should be
+  59:/usr/avr/include/util/delay.h ****     used.
+  60:/usr/avr/include/util/delay.h **** 
+  61:/usr/avr/include/util/delay.h ****     The functions in this header file are wrappers around the basic
+  62:/usr/avr/include/util/delay.h ****     busy-wait functions from <util/delay_basic.h>.  They are meant as
+  63:/usr/avr/include/util/delay.h ****     convenience functions where actual time values can be specified
+  64:/usr/avr/include/util/delay.h ****     rather than a number of cycles to wait for.  The idea behind is
+  65:/usr/avr/include/util/delay.h ****     that compile-time constant expressions will be eliminated by
+  66:/usr/avr/include/util/delay.h ****     compiler optimization so floating-point expressions can be used
+  67:/usr/avr/include/util/delay.h ****     to calculate the number of delay cycles needed based on the CPU
+  68:/usr/avr/include/util/delay.h ****     frequency passed by the macro F_CPU.
+  69:/usr/avr/include/util/delay.h **** 
+  70:/usr/avr/include/util/delay.h ****     \note In order for these functions to work as intended, compiler
+  71:/usr/avr/include/util/delay.h ****     optimizations <em>must</em> be enabled, and the delay time
+  72:/usr/avr/include/util/delay.h ****     <em>must</em> be an expression that is a known constant at
+  73:/usr/avr/include/util/delay.h ****     compile-time.  If these requirements are not met, the resulting
+  74:/usr/avr/include/util/delay.h ****     delay will be much longer (and basically unpredictable), and
+  75:/usr/avr/include/util/delay.h ****     applications that otherwise do not use floating-point calculations
+  76:/usr/avr/include/util/delay.h ****     will experience severe code bloat by the floating-point library
+  77:/usr/avr/include/util/delay.h ****     routines linked into the application.
+  78:/usr/avr/include/util/delay.h **** 
+  79:/usr/avr/include/util/delay.h ****     The functions available allow the specification of microsecond, and
+  80:/usr/avr/include/util/delay.h ****     millisecond delays directly, using the application-supplied macro
+  81:/usr/avr/include/util/delay.h ****     F_CPU as the CPU clock frequency (in Hertz).
+  82:/usr/avr/include/util/delay.h **** 
+  83:/usr/avr/include/util/delay.h **** */
+  84:/usr/avr/include/util/delay.h **** 
+  85:/usr/avr/include/util/delay.h **** #if !defined(__DOXYGEN__)
+  86:/usr/avr/include/util/delay.h **** static __inline__ void _delay_us(double __us) __attribute__((__always_inline__));
+  87:/usr/avr/include/util/delay.h **** static __inline__ void _delay_ms(double __ms) __attribute__((__always_inline__));
+  88:/usr/avr/include/util/delay.h **** #endif
+  89:/usr/avr/include/util/delay.h **** 
+  90:/usr/avr/include/util/delay.h **** #ifndef F_CPU
+  91:/usr/avr/include/util/delay.h **** /* prevent compiler error by supplying a default */
+  92:/usr/avr/include/util/delay.h **** # warning "F_CPU not defined for <util/delay.h>"
+  93:/usr/avr/include/util/delay.h **** /** \ingroup util_delay
+  94:/usr/avr/include/util/delay.h ****     \def F_CPU
+  95:/usr/avr/include/util/delay.h ****     \brief CPU frequency in Hz
+  96:/usr/avr/include/util/delay.h **** 
+  97:/usr/avr/include/util/delay.h ****     The macro F_CPU specifies the CPU frequency to be considered by
+  98:/usr/avr/include/util/delay.h ****     the delay macros.  This macro is normally supplied by the
+  99:/usr/avr/include/util/delay.h ****     environment (e.g. from within a project header, or the project's
+ 100:/usr/avr/include/util/delay.h ****     Makefile).  The value 1 MHz here is only provided as a "vanilla"
+ 101:/usr/avr/include/util/delay.h ****     fallback if no such user-provided definition could be found.
+ 102:/usr/avr/include/util/delay.h **** 
+ 103:/usr/avr/include/util/delay.h ****     In terms of the delay functions, the CPU frequency can be given as
+ 104:/usr/avr/include/util/delay.h ****     a floating-point constant (e.g. 3.6864E6 for 3.6864 MHz).
+ 105:/usr/avr/include/util/delay.h ****     However, the macros in <util/setbaud.h> require it to be an
+ 106:/usr/avr/include/util/delay.h ****     integer value.
+ 107:/usr/avr/include/util/delay.h ****  */
+ 108:/usr/avr/include/util/delay.h **** # define F_CPU 1000000UL
+ 109:/usr/avr/include/util/delay.h **** #endif
+ 110:/usr/avr/include/util/delay.h **** 
+ 111:/usr/avr/include/util/delay.h **** #ifndef __OPTIMIZE__
+ 112:/usr/avr/include/util/delay.h **** # warning "Compiler optimizations disabled; functions from <util/delay.h> won't work as designed"
+ 113:/usr/avr/include/util/delay.h **** #endif
+ 114:/usr/avr/include/util/delay.h **** 
+ 115:/usr/avr/include/util/delay.h **** #if __HAS_DELAY_CYCLES && defined(__OPTIMIZE__) && \
+ 116:/usr/avr/include/util/delay.h ****   !defined(__DELAY_BACKWARD_COMPATIBLE__) &&	   \
+ 117:/usr/avr/include/util/delay.h ****   __STDC_HOSTED__
+ 118:/usr/avr/include/util/delay.h **** #  include <math.h>
+ 119:/usr/avr/include/util/delay.h **** #endif
+ 120:/usr/avr/include/util/delay.h **** 
+ 121:/usr/avr/include/util/delay.h **** /**
+ 122:/usr/avr/include/util/delay.h ****    \ingroup util_delay
+ 123:/usr/avr/include/util/delay.h **** 
+ 124:/usr/avr/include/util/delay.h ****    Perform a delay of \c __ms milliseconds, using _delay_loop_2().
+ 125:/usr/avr/include/util/delay.h **** 
+ 126:/usr/avr/include/util/delay.h ****    The macro F_CPU is supposed to be defined to a
+ 127:/usr/avr/include/util/delay.h ****    constant defining the CPU clock frequency (in Hertz).
+ 128:/usr/avr/include/util/delay.h **** 
+ 129:/usr/avr/include/util/delay.h ****    The maximal possible delay is 262.14 ms / F_CPU in MHz.
+ 130:/usr/avr/include/util/delay.h **** 
+ 131:/usr/avr/include/util/delay.h ****    When the user request delay which exceed the maximum possible one,
+ 132:/usr/avr/include/util/delay.h ****    _delay_ms() provides a decreased resolution functionality. In this
+ 133:/usr/avr/include/util/delay.h ****    mode _delay_ms() will work with a resolution of 1/10 ms, providing
+ 134:/usr/avr/include/util/delay.h ****    delays up to 6.5535 seconds (independent from CPU frequency).  The
+ 135:/usr/avr/include/util/delay.h ****    user will not be informed about decreased resolution.
+ 136:/usr/avr/include/util/delay.h **** 
+ 137:/usr/avr/include/util/delay.h ****    If the avr-gcc toolchain has __builtin_avr_delay_cycles()
+ 138:/usr/avr/include/util/delay.h ****    support, maximal possible delay is 4294967.295 ms/ F_CPU in MHz. For
+ 139:/usr/avr/include/util/delay.h ****    values greater than the maximal possible delay, overflows results in
+ 140:/usr/avr/include/util/delay.h ****    no delay i.e., 0ms.
+ 141:/usr/avr/include/util/delay.h **** 
+ 142:/usr/avr/include/util/delay.h ****    Conversion of \c __ms into clock cycles may not always result in
+ 143:/usr/avr/include/util/delay.h ****    integer.  By default, the clock cycles rounded up to next
+ 144:/usr/avr/include/util/delay.h ****    integer. This ensures that the user gets at least \c __ms
+ 145:/usr/avr/include/util/delay.h ****    microseconds of delay.
+ 146:/usr/avr/include/util/delay.h **** 
+ 147:/usr/avr/include/util/delay.h ****    Alternatively, by defining the macro \c __DELAY_ROUND_DOWN__, or
+ 148:/usr/avr/include/util/delay.h ****    \c __DELAY_ROUND_CLOSEST__, before including this header file, the
+ 149:/usr/avr/include/util/delay.h ****    algorithm can be made to round down, or round to closest integer,
+ 150:/usr/avr/include/util/delay.h ****    respectively.
+ 151:/usr/avr/include/util/delay.h **** 
+ 152:/usr/avr/include/util/delay.h ****    \note
+ 153:/usr/avr/include/util/delay.h **** 
+ 154:/usr/avr/include/util/delay.h ****    The implementation of _delay_ms() based on
+ 155:/usr/avr/include/util/delay.h ****    __builtin_avr_delay_cycles() is not backward compatible with older
+ 156:/usr/avr/include/util/delay.h ****    implementations.  In order to get functionality backward compatible
+ 157:/usr/avr/include/util/delay.h ****    with previous versions, the macro \c "__DELAY_BACKWARD_COMPATIBLE__"
+ 158:/usr/avr/include/util/delay.h ****    must be defined before including this header file. Also, the
+ 159:/usr/avr/include/util/delay.h ****    backward compatible algorithm will be chosen if the code is
+ 160:/usr/avr/include/util/delay.h ****    compiled in a <em>freestanding environment</em> (GCC option
+ 161:/usr/avr/include/util/delay.h ****    \c -ffreestanding), as the math functions required for rounding are
+ 162:/usr/avr/include/util/delay.h ****    not available to the compiler then.
+ 163:/usr/avr/include/util/delay.h **** 
+ 164:/usr/avr/include/util/delay.h ****  */
+ 165:/usr/avr/include/util/delay.h **** void
+ 166:/usr/avr/include/util/delay.h **** _delay_ms(double __ms)
+  51               		.loc 2 166 1 view .LVU10
+  52               	.LBB13:
+ 167:/usr/avr/include/util/delay.h **** {
+ 168:/usr/avr/include/util/delay.h **** 	double __tmp ;
+  53               		.loc 2 168 2 view .LVU11
+ 169:/usr/avr/include/util/delay.h **** #if __HAS_DELAY_CYCLES && defined(__OPTIMIZE__) && \
+ 170:/usr/avr/include/util/delay.h ****   !defined(__DELAY_BACKWARD_COMPATIBLE__) &&	   \
+ 171:/usr/avr/include/util/delay.h ****   __STDC_HOSTED__
+ 172:/usr/avr/include/util/delay.h **** 	uint32_t __ticks_dc;
+  54               		.loc 2 172 2 view .LVU12
+ 173:/usr/avr/include/util/delay.h **** 	extern void __builtin_avr_delay_cycles(unsigned long);
+  55               		.loc 2 173 2 view .LVU13
+ 174:/usr/avr/include/util/delay.h **** 	__tmp = ((F_CPU) / 1e3) * __ms;
+  56               		.loc 2 174 2 view .LVU14
+ 175:/usr/avr/include/util/delay.h **** 
+ 176:/usr/avr/include/util/delay.h **** 	#if defined(__DELAY_ROUND_DOWN__)
+ 177:/usr/avr/include/util/delay.h **** 		__ticks_dc = (uint32_t)fabs(__tmp);
+ 178:/usr/avr/include/util/delay.h **** 
+ 179:/usr/avr/include/util/delay.h **** 	#elif defined(__DELAY_ROUND_CLOSEST__)
+ 180:/usr/avr/include/util/delay.h **** 		__ticks_dc = (uint32_t)(fabs(__tmp)+0.5);
+ 181:/usr/avr/include/util/delay.h **** 
+ 182:/usr/avr/include/util/delay.h **** 	#else
+ 183:/usr/avr/include/util/delay.h **** 		//round up by default
+ 184:/usr/avr/include/util/delay.h **** 		__ticks_dc = (uint32_t)(ceil(fabs(__tmp)));
+  57               		.loc 2 184 3 view .LVU15
+ 185:/usr/avr/include/util/delay.h **** 	#endif
+ 186:/usr/avr/include/util/delay.h **** 
+ 187:/usr/avr/include/util/delay.h **** 	__builtin_avr_delay_cycles(__ticks_dc);
+  58               		.loc 2 187 2 view .LVU16
+  59 0014 8FE3      		ldi r24,lo8(-25537)
+  60 0016 9CE9      		ldi r25,hi8(-25537)
+  61 0018 0197      	1:	sbiw r24,1
+  62 001a 01F4      		brne 1b
+  63 001c 00C0      		rjmp .
+  64 001e 0000      		nop
+  65               	.LVL3:
+  66               		.loc 2 187 2 is_stmt 0 view .LVU17
+  67               	.LBE13:
+  68               	.LBE12:
+  66:quantum/split_common/split_util.c ****     }
+  69               		.loc 1 66 9 is_stmt 1 view .LVU18
+  61:quantum/split_common/split_util.c ****         // This will return true if a USB connection has been established
+  70               		.loc 1 61 76 view .LVU19
+  61:quantum/split_common/split_util.c ****         // This will return true if a USB connection has been established
+  71               		.loc 1 61 27 view .LVU20
+  72 0020 C150      		subi r28,lo8(-(-1))
+  73               	.LVL4:
+  61:quantum/split_common/split_util.c ****         // This will return true if a USB connection has been established
+  74               		.loc 1 61 27 is_stmt 0 view .LVU21
+  75 0022 01F4      		brne .L4
+  76               	.LVL5:
+  61:quantum/split_common/split_util.c ****         // This will return true if a USB connection has been established
+  77               		.loc 1 61 27 view .LVU22
+  78               	.LBE11:
+  79               	.LBE10:
+ 120:quantum/split_common/split_util.c ****         usbstate = usbIsActive() ? MASTER : SLAVE;
+  80               		.loc 1 120 18 view .LVU23
+  81 0024 82E0      		ldi r24,lo8(2)
+  82 0026 8093 0000 		sts usbstate.3,r24
+ 121:quantum/split_common/split_util.c **** 
+ 122:quantum/split_common/split_util.c ****         // Avoid NO_USB_STARTUP_CHECK - Disable USB as the previous checks seem to enable it someho
+ 123:quantum/split_common/split_util.c ****         if (usbstate == SLAVE) {
+  83               		.loc 1 123 9 is_stmt 1 view .LVU24
+ 124:quantum/split_common/split_util.c ****             usb_disconnect();
+  84               		.loc 1 124 13 view .LVU25
+  85 002a 0E94 0000 		call usb_disconnect
+  86               	.LVL6:
+  87 002e 00C0      		rjmp .L2
+  88               	.LVL7:
+  89               	.L3:
+ 120:quantum/split_common/split_util.c ****         usbstate = usbIsActive() ? MASTER : SLAVE;
+  90               		.loc 1 120 18 is_stmt 0 view .LVU26
+  91 0030 81E0      		ldi r24,lo8(1)
+  92 0032 8093 0000 		sts usbstate.3,r24
+ 123:quantum/split_common/split_util.c ****             usb_disconnect();
+  93               		.loc 1 123 9 is_stmt 1 view .LVU27
+  94               	.L2:
+ 125:quantum/split_common/split_util.c ****         }
+ 126:quantum/split_common/split_util.c ****     }
+ 127:quantum/split_common/split_util.c **** 
+ 128:quantum/split_common/split_util.c ****     return (usbstate == MASTER);
+  95               		.loc 1 128 5 view .LVU28
+  96               		.loc 1 128 22 is_stmt 0 view .LVU29
+  97 0036 81E0      		ldi r24,lo8(1)
+  98 0038 9091 0000 		lds r25,usbstate.3
+  99 003c 9130      		cpi r25,lo8(1)
+ 100 003e 01F0      		breq .L8
+ 101 0040 80E0      		ldi r24,0
+ 102               	.L8:
+ 103               	/* epilogue start */
+ 129:quantum/split_common/split_util.c **** }
+ 104               		.loc 1 129 1 view .LVU30
+ 105 0042 CF91      		pop r28
+ 106 0044 0895      		ret
+ 107               		.cfi_endproc
+ 108               	.LFE29:
+ 110               		.section	.text.is_keyboard_left,"ax",@progbits
+ 111               		.weak	is_keyboard_left
+ 113               	is_keyboard_left:
+ 114               	.LFB28:
+  91:quantum/split_common/split_util.c **** #if defined(SPLIT_HAND_PIN)
+ 115               		.loc 1 91 51 is_stmt 1 view -0
+ 116               		.cfi_startproc
+ 117               	/* prologue: function */
+ 118               	/* frame size = 0 */
+ 119               	/* stack size = 0 */
+ 120               	.L__stack_usage = 0
+ 112:quantum/split_common/split_util.c **** }
+ 121               		.loc 1 112 5 view .LVU32
+ 112:quantum/split_common/split_util.c **** }
+ 122               		.loc 1 112 12 is_stmt 0 view .LVU33
+ 123 0000 0C94 0000 		jmp is_keyboard_master
+ 124               	.LVL8:
+ 125               		.cfi_endproc
+ 126               	.LFE28:
+ 128               		.section	.text.split_pre_init,"ax",@progbits
+ 129               	.global	split_pre_init
+ 131               	split_pre_init:
+ 132               	.LFB30:
+ 130:quantum/split_common/split_util.c **** 
+ 131:quantum/split_common/split_util.c **** // this code runs before the keyboard is fully initialized
+ 132:quantum/split_common/split_util.c **** void split_pre_init(void) {
+ 133               		.loc 1 132 27 is_stmt 1 view -0
+ 134               		.cfi_startproc
+ 135               	/* prologue: function */
+ 136               	/* frame size = 0 */
+ 137               	/* stack size = 0 */
+ 138               	.L__stack_usage = 0
+ 133:quantum/split_common/split_util.c ****     isLeftHand = is_keyboard_left();
+ 139               		.loc 1 133 5 view .LVU35
+ 140               		.loc 1 133 18 is_stmt 0 view .LVU36
+ 141 0000 0E94 0000 		call is_keyboard_left
+ 142               	.LVL9:
+ 143               		.loc 1 133 16 view .LVU37
+ 144 0004 8093 0000 		sts isLeftHand,r24
+ 134:quantum/split_common/split_util.c **** 
+ 135:quantum/split_common/split_util.c **** #if defined(RGBLIGHT_ENABLE) && defined(RGBLED_SPLIT)
+ 136:quantum/split_common/split_util.c ****     uint8_t num_rgb_leds_split[2] = RGBLED_SPLIT;
+ 137:quantum/split_common/split_util.c ****     if (isLeftHand) {
+ 138:quantum/split_common/split_util.c ****         rgblight_set_clipping_range(0, num_rgb_leds_split[0]);
+ 139:quantum/split_common/split_util.c ****     } else {
+ 140:quantum/split_common/split_util.c ****         rgblight_set_clipping_range(num_rgb_leds_split[0], num_rgb_leds_split[1]);
+ 141:quantum/split_common/split_util.c ****     }
+ 142:quantum/split_common/split_util.c **** #endif
+ 143:quantum/split_common/split_util.c **** 
+ 144:quantum/split_common/split_util.c ****     if (is_keyboard_master()) {
+ 145               		.loc 1 144 5 is_stmt 1 view .LVU38
+ 146               		.loc 1 144 9 is_stmt 0 view .LVU39
+ 147 0008 0E94 0000 		call is_keyboard_master
+ 148               	.LVL10:
+ 149               		.loc 1 144 8 view .LVU40
+ 150 000c 8111      		cpse r24,__zero_reg__
+ 145:quantum/split_common/split_util.c **** #if defined(USE_I2C) && defined(SSD1306OLED)
+ 146:quantum/split_common/split_util.c ****         matrix_master_OLED_init();
+ 147:quantum/split_common/split_util.c **** #endif
+ 148:quantum/split_common/split_util.c ****         transport_master_init();
+ 151               		.loc 1 148 9 is_stmt 1 view .LVU41
+ 152 000e 0C94 0000 		jmp transport_master_init
+ 153               	.LVL11:
+ 154               	.L14:
+ 155               	/* epilogue start */
+ 149:quantum/split_common/split_util.c ****     }
+ 150:quantum/split_common/split_util.c **** }
+ 156               		.loc 1 150 1 is_stmt 0 view .LVU42
+ 157 0012 0895      		ret
+ 158               		.cfi_endproc
+ 159               	.LFE30:
+ 161               		.section	.text.split_post_init,"ax",@progbits
+ 162               	.global	split_post_init
+ 164               	split_post_init:
+ 165               	.LFB31:
+ 151:quantum/split_common/split_util.c **** 
+ 152:quantum/split_common/split_util.c **** // this code runs after the keyboard is fully initialized
+ 153:quantum/split_common/split_util.c **** //   - avoids race condition during matrix_init_quantum where slave can start
+ 154:quantum/split_common/split_util.c **** //     receiving before the init process has completed
+ 155:quantum/split_common/split_util.c **** void split_post_init(void) {
+ 166               		.loc 1 155 28 is_stmt 1 view -0
+ 167               		.cfi_startproc
+ 168               	/* prologue: function */
+ 169               	/* frame size = 0 */
+ 170               	/* stack size = 0 */
+ 171               	.L__stack_usage = 0
+ 156:quantum/split_common/split_util.c ****     if (!is_keyboard_master()) {
+ 172               		.loc 1 156 5 view .LVU44
+ 173               		.loc 1 156 10 is_stmt 0 view .LVU45
+ 174 0000 0E94 0000 		call is_keyboard_master
+ 175               	.LVL12:
+ 176               		.loc 1 156 8 view .LVU46
+ 177 0004 8111      		cpse r24,__zero_reg__
+ 178 0006 00C0      		rjmp .L16
+ 157:quantum/split_common/split_util.c ****         transport_slave_init();
+ 179               		.loc 1 157 9 is_stmt 1 view .LVU47
+ 180 0008 0C94 0000 		jmp transport_slave_init
+ 181               	.LVL13:
+ 182               	.L16:
+ 183               	/* epilogue start */
+ 158:quantum/split_common/split_util.c ****     }
+ 159:quantum/split_common/split_util.c **** }
+ 184               		.loc 1 159 1 is_stmt 0 view .LVU48
+ 185 000c 0895      		ret
+ 186               		.cfi_endproc
+ 187               	.LFE31:
+ 189               		.section	.text.is_transport_connected,"ax",@progbits
+ 190               	.global	is_transport_connected
+ 192               	is_transport_connected:
+ 193               	.LFB32:
+ 160:quantum/split_common/split_util.c **** 
+ 161:quantum/split_common/split_util.c **** bool is_transport_connected(void) { return connection_errors < SPLIT_MAX_CONNECTION_ERRORS; }
+ 194               		.loc 1 161 35 is_stmt 1 view -0
+ 195               		.cfi_startproc
+ 196               	/* prologue: function */
+ 197               	/* frame size = 0 */
+ 198               	/* stack size = 0 */
+ 199               	.L__stack_usage = 0
+ 200               		.loc 1 161 37 view .LVU50
+ 201               		.loc 1 161 62 is_stmt 0 view .LVU51
+ 202 0000 81E0      		ldi r24,lo8(1)
+ 203 0002 9091 0000 		lds r25,connection_errors
+ 204 0006 9A30      		cpi r25,lo8(10)
+ 205 0008 00F0      		brlo .L19
+ 206 000a 80E0      		ldi r24,0
+ 207               	.L19:
+ 208               	/* epilogue start */
+ 209               		.loc 1 161 93 view .LVU52
+ 210 000c 0895      		ret
+ 211               		.cfi_endproc
+ 212               	.LFE32:
+ 214               		.section	.text.transport_master_if_connected,"ax",@progbits
+ 215               	.global	transport_master_if_connected
+ 217               	transport_master_if_connected:
+ 218               	.LVL14:
+ 219               	.LFB33:
+ 162:quantum/split_common/split_util.c **** 
+ 163:quantum/split_common/split_util.c **** bool transport_master_if_connected(matrix_row_t master_matrix[], matrix_row_t slave_matrix[]) {
+ 220               		.loc 1 163 95 is_stmt 1 view -0
+ 221               		.cfi_startproc
+ 222               		.loc 1 163 95 is_stmt 0 view .LVU54
+ 223 0000 FF92      		push r15
+ 224               	.LCFI1:
+ 225               		.cfi_def_cfa_offset 3
+ 226               		.cfi_offset 15, -2
+ 227 0002 0F93      		push r16
+ 228               	.LCFI2:
+ 229               		.cfi_def_cfa_offset 4
+ 230               		.cfi_offset 16, -3
+ 231 0004 1F93      		push r17
+ 232               	.LCFI3:
+ 233               		.cfi_def_cfa_offset 5
+ 234               		.cfi_offset 17, -4
+ 235 0006 CF93      		push r28
+ 236               	.LCFI4:
+ 237               		.cfi_def_cfa_offset 6
+ 238               		.cfi_offset 28, -5
+ 239 0008 DF93      		push r29
+ 240               	.LCFI5:
+ 241               		.cfi_def_cfa_offset 7
+ 242               		.cfi_offset 29, -6
+ 243               	/* prologue: function */
+ 244               	/* frame size = 0 */
+ 245               	/* stack size = 5 */
+ 246               	.L__stack_usage = 5
+ 247 000a EC01      		movw r28,r24
+ 248 000c 162F      		mov r17,r22
+ 249 000e 072F      		mov r16,r23
+ 164:quantum/split_common/split_util.c **** #if SPLIT_MAX_CONNECTION_ERRORS > 0 && SPLIT_CONNECTION_CHECK_TIMEOUT > 0
+ 165:quantum/split_common/split_util.c ****     // Throttle transaction attempts if target doesn't seem to be connected
+ 166:quantum/split_common/split_util.c ****     // Without this, a solo half becomes unusable due to constant read timeouts
+ 167:quantum/split_common/split_util.c ****     static uint16_t connection_check_timer = 0;
+ 250               		.loc 1 167 5 is_stmt 1 view .LVU55
+ 168:quantum/split_common/split_util.c ****     const bool      is_disconnected        = !is_transport_connected();
+ 251               		.loc 1 168 5 view .LVU56
+ 252               	.LBB21:
+ 253               	.LBI21:
+ 161:quantum/split_common/split_util.c **** 
+ 254               		.loc 1 161 6 view .LVU57
+ 255               	.LBB22:
+ 161:quantum/split_common/split_util.c **** 
+ 256               		.loc 1 161 37 view .LVU58
+ 161:quantum/split_common/split_util.c **** 
+ 257               		.loc 1 161 62 is_stmt 0 view .LVU59
+ 258 0010 F090 0000 		lds r15,connection_errors
+ 259               	.LVL15:
+ 161:quantum/split_common/split_util.c **** 
+ 260               		.loc 1 161 62 view .LVU60
+ 261               	.LBE22:
+ 262               	.LBE21:
+ 169:quantum/split_common/split_util.c ****     if (is_disconnected && timer_elapsed(connection_check_timer) < SPLIT_CONNECTION_CHECK_TIMEOUT) 
+ 263               		.loc 1 169 5 is_stmt 1 view .LVU61
+ 264               		.loc 1 169 8 is_stmt 0 view .LVU62
+ 265 0014 29E0      		ldi r18,lo8(9)
+ 266 0016 2F15      		cp r18,r15
+ 267 0018 00F0      		brlo .L21
+ 268               	.LVL16:
+ 269               	.L24:
+ 170:quantum/split_common/split_util.c ****         return false;
+ 171:quantum/split_common/split_util.c ****     }
+ 172:quantum/split_common/split_util.c **** #endif  // SPLIT_MAX_CONNECTION_ERRORS > 0 && SPLIT_CONNECTION_CHECK_TIMEOUT > 0
+ 173:quantum/split_common/split_util.c **** 
+ 174:quantum/split_common/split_util.c ****     __attribute__((unused)) bool okay = transport_master(master_matrix, slave_matrix);
+ 270               		.loc 1 174 5 is_stmt 1 view .LVU63
+ 271               		.loc 1 174 41 is_stmt 0 view .LVU64
+ 272 001a 612F      		mov r22,r17
+ 273 001c 702F      		mov r23,r16
+ 274 001e CE01      		movw r24,r28
+ 275 0020 0E94 0000 		call transport_master
+ 276               	.LVL17:
+ 277 0024 C82F      		mov r28,r24
+ 278               	.LVL18:
+ 175:quantum/split_common/split_util.c **** #if SPLIT_MAX_CONNECTION_ERRORS > 0
+ 176:quantum/split_common/split_util.c ****     if (!okay) {
+ 279               		.loc 1 176 5 is_stmt 1 view .LVU65
+ 280               		.loc 1 176 8 is_stmt 0 view .LVU66
+ 281 0026 8111      		cpse r24,__zero_reg__
+ 282 0028 00C0      		rjmp .L22
+ 283               	.LBB23:
+ 177:quantum/split_common/split_util.c ****         if (connection_errors < UINT8_MAX) {
+ 284               		.loc 1 177 9 is_stmt 1 view .LVU67
+ 285               		.loc 1 177 31 is_stmt 0 view .LVU68
+ 286 002a 8091 0000 		lds r24,connection_errors
+ 287               	.LVL19:
+ 288               		.loc 1 177 12 view .LVU69
+ 289 002e 8F3F      		cpi r24,lo8(-1)
+ 290 0030 01F4      		brne .L26
+ 291               	.L29:
+ 178:quantum/split_common/split_util.c ****             connection_errors++;
+ 179:quantum/split_common/split_util.c ****         }
+ 180:quantum/split_common/split_util.c **** #    if SPLIT_CONNECTION_CHECK_TIMEOUT > 0
+ 181:quantum/split_common/split_util.c ****         bool connected = is_transport_connected();
+ 182:quantum/split_common/split_util.c ****         if (!connected) {
+ 183:quantum/split_common/split_util.c ****             connection_check_timer = timer_read();
+ 292               		.loc 1 183 13 is_stmt 1 view .LVU70
+ 293               		.loc 1 183 38 is_stmt 0 view .LVU71
+ 294 0032 0E94 0000 		call timer_read
+ 295               	.LVL20:
+ 296               		.loc 1 183 36 view .LVU72
+ 297 0036 9093 0000 		sts connection_check_timer.2+1,r25
+ 298 003a 8093 0000 		sts connection_check_timer.2,r24
+ 184:quantum/split_common/split_util.c ****             dprintln("Target disconnected, throttling connection attempts");
+ 299               		.loc 1 184 13 is_stmt 1 view .LVU73
+ 300               		.loc 1 184 13 view .LVU74
+ 301 003e 8091 0000 		lds r24,debug_config
+ 302 0042 80FF      		sbrs r24,0
+ 303 0044 00C0      		rjmp .L28
+ 304               		.loc 1 184 13 discriminator 1 view .LVU75
+ 305               	.LBB24:
+ 306               		.loc 1 184 13 discriminator 1 view .LVU76
+ 307               		.loc 1 184 13 discriminator 1 view .LVU77
+ 308               	.LBE24:
+ 309 0046 80E0      		ldi r24,lo8(__c.1)
+ 310 0048 90E0      		ldi r25,hi8(__c.1)
+ 311 004a 0E94 0000 		call xputs
+ 312               	.LVL21:
+ 313 004e 00C0      		rjmp .L20
+ 314               	.LVL22:
+ 315               	.L21:
+ 316               		.loc 1 184 13 is_stmt 0 discriminator 1 view .LVU78
+ 317               	.LBE23:
+ 169:quantum/split_common/split_util.c ****         return false;
+ 318               		.loc 1 169 28 discriminator 1 view .LVU79
+ 319 0050 8091 0000 		lds r24,connection_check_timer.2
+ 320 0054 9091 0000 		lds r25,connection_check_timer.2+1
+ 321               	.LVL23:
+ 169:quantum/split_common/split_util.c ****         return false;
+ 322               		.loc 1 169 28 discriminator 1 view .LVU80
+ 323 0058 0E94 0000 		call timer_elapsed
+ 324               	.LVL24:
+ 169:quantum/split_common/split_util.c ****         return false;
+ 325               		.loc 1 169 25 discriminator 1 view .LVU81
+ 326 005c 843F      		cpi r24,-12
+ 327 005e 9140      		sbci r25,1
+ 328 0060 00F4      		brsh .L24
+ 329               	.LVL25:
+ 330               	.L28:
+ 170:quantum/split_common/split_util.c ****     }
+ 331               		.loc 1 170 16 view .LVU82
+ 332 0062 C0E0      		ldi r28,0
+ 333               	.L20:
+ 185:quantum/split_common/split_util.c ****         }
+ 186:quantum/split_common/split_util.c ****         return connected;
+ 187:quantum/split_common/split_util.c ****     } else if (is_disconnected) {
+ 188:quantum/split_common/split_util.c ****         dprintln("Target connected");
+ 189:quantum/split_common/split_util.c **** #    endif  // SPLIT_CONNECTION_CHECK_TIMEOUT > 0
+ 190:quantum/split_common/split_util.c ****     }
+ 191:quantum/split_common/split_util.c **** 
+ 192:quantum/split_common/split_util.c ****     connection_errors = 0;
+ 193:quantum/split_common/split_util.c **** #endif  // SPLIT_MAX_CONNECTION_ERRORS > 0
+ 194:quantum/split_common/split_util.c ****     return true;
+ 195:quantum/split_common/split_util.c **** }
+ 334               		.loc 1 195 1 view .LVU83
+ 335 0064 8C2F      		mov r24,r28
+ 336               	/* epilogue start */
+ 337 0066 DF91      		pop r29
+ 338 0068 CF91      		pop r28
+ 339 006a 1F91      		pop r17
+ 340 006c 0F91      		pop r16
+ 341 006e FF90      		pop r15
+ 342               	.LVL26:
+ 343               		.loc 1 195 1 view .LVU84
+ 344 0070 0895      		ret
+ 345               	.LVL27:
+ 346               	.L26:
+ 347               	.LBB25:
+ 178:quantum/split_common/split_util.c ****         }
+ 348               		.loc 1 178 13 is_stmt 1 view .LVU85
+ 178:quantum/split_common/split_util.c ****         }
+ 349               		.loc 1 178 30 is_stmt 0 view .LVU86
+ 350 0072 8F5F      		subi r24,lo8(-(1))
+ 351 0074 8093 0000 		sts connection_errors,r24
+ 181:quantum/split_common/split_util.c ****         if (!connected) {
+ 352               		.loc 1 181 9 is_stmt 1 view .LVU87
+ 353               	.LVL28:
+ 182:quantum/split_common/split_util.c ****             connection_check_timer = timer_read();
+ 354               		.loc 1 182 9 view .LVU88
+ 182:quantum/split_common/split_util.c ****             connection_check_timer = timer_read();
+ 355               		.loc 1 182 12 is_stmt 0 view .LVU89
+ 356 0078 8A30      		cpi r24,lo8(10)
+ 357 007a 00F4      		brsh .L29
+ 186:quantum/split_common/split_util.c ****     } else if (is_disconnected) {
+ 358               		.loc 1 186 16 view .LVU90
+ 359 007c C1E0      		ldi r28,lo8(1)
+ 360               	.LVL29:
+ 186:quantum/split_common/split_util.c ****     } else if (is_disconnected) {
+ 361               		.loc 1 186 16 view .LVU91
+ 362 007e 00C0      		rjmp .L20
+ 363               	.LVL30:
+ 364               	.L22:
+ 186:quantum/split_common/split_util.c ****     } else if (is_disconnected) {
+ 365               		.loc 1 186 16 view .LVU92
+ 366               	.LBE25:
+ 187:quantum/split_common/split_util.c ****         dprintln("Target connected");
+ 367               		.loc 1 187 12 is_stmt 1 view .LVU93
+ 187:quantum/split_common/split_util.c ****         dprintln("Target connected");
+ 368               		.loc 1 187 15 is_stmt 0 view .LVU94
+ 369 0080 89E0      		ldi r24,lo8(9)
+ 370               	.LVL31:
+ 187:quantum/split_common/split_util.c ****         dprintln("Target connected");
+ 371               		.loc 1 187 15 view .LVU95
+ 372 0082 8F15      		cp r24,r15
+ 373 0084 00F4      		brsh .L30
+ 188:quantum/split_common/split_util.c **** #    endif  // SPLIT_CONNECTION_CHECK_TIMEOUT > 0
+ 374               		.loc 1 188 9 is_stmt 1 view .LVU96
+ 188:quantum/split_common/split_util.c **** #    endif  // SPLIT_CONNECTION_CHECK_TIMEOUT > 0
+ 375               		.loc 1 188 9 view .LVU97
+ 376 0086 8091 0000 		lds r24,debug_config
+ 377 008a 80FF      		sbrs r24,0
+ 378 008c 00C0      		rjmp .L30
+ 188:quantum/split_common/split_util.c **** #    endif  // SPLIT_CONNECTION_CHECK_TIMEOUT > 0
+ 379               		.loc 1 188 9 discriminator 1 view .LVU98
+ 380               	.LBB26:
+ 188:quantum/split_common/split_util.c **** #    endif  // SPLIT_CONNECTION_CHECK_TIMEOUT > 0
+ 381               		.loc 1 188 9 discriminator 1 view .LVU99
+ 188:quantum/split_common/split_util.c **** #    endif  // SPLIT_CONNECTION_CHECK_TIMEOUT > 0
+ 382               		.loc 1 188 9 discriminator 1 view .LVU100
+ 383               	.LBE26:
+ 384 008e 80E0      		ldi r24,lo8(__c.0)
+ 385 0090 90E0      		ldi r25,hi8(__c.0)
+ 386 0092 0E94 0000 		call xputs
+ 387               	.LVL32:
+ 388               	.L30:
+ 188:quantum/split_common/split_util.c **** #    endif  // SPLIT_CONNECTION_CHECK_TIMEOUT > 0
+ 389               		.loc 1 188 9 discriminator 3 view .LVU101
+ 192:quantum/split_common/split_util.c **** #endif  // SPLIT_MAX_CONNECTION_ERRORS > 0
+ 390               		.loc 1 192 5 discriminator 3 view .LVU102
+ 192:quantum/split_common/split_util.c **** #endif  // SPLIT_MAX_CONNECTION_ERRORS > 0
+ 391               		.loc 1 192 23 is_stmt 0 discriminator 3 view .LVU103
+ 392 0096 1092 0000 		sts connection_errors,__zero_reg__
+ 194:quantum/split_common/split_util.c **** }
+ 393               		.loc 1 194 5 is_stmt 1 discriminator 3 view .LVU104
+ 194:quantum/split_common/split_util.c **** }
+ 394               		.loc 1 194 12 is_stmt 0 discriminator 3 view .LVU105
+ 395 009a 00C0      		rjmp .L20
+ 396               		.cfi_endproc
+ 397               	.LFE33:
+ 399               		.section	.progmem.data.__c.0,"a"
+ 402               	__c.0:
+ 403 0000 5461 7267 		.string	"Target connected\r\n"
+ 403      6574 2063 
+ 403      6F6E 6E65 
+ 403      6374 6564 
+ 403      0D0A 00
+ 404               		.section	.progmem.data.__c.1,"a"
+ 407               	__c.1:
+ 408 0000 5461 7267 		.string	"Target disconnected, throttling connection attempts\r\n"
+ 408      6574 2064 
+ 408      6973 636F 
+ 408      6E6E 6563 
+ 408      7465 642C 
+ 409               		.section	.bss.connection_check_timer.2,"aw",@nobits
+ 412               	connection_check_timer.2:
+ 413 0000 0000      		.zero	2
+ 414               		.section	.bss.usbstate.3,"aw",@nobits
+ 417               	usbstate.3:
+ 418 0000 00        		.zero	1
+ 419               	.global	isLeftHand
+ 420               		.section	.data.isLeftHand,"aw"
+ 423               	isLeftHand:
+ 424 0000 01        		.byte	1
+ 425               		.section	.bss.connection_errors,"aw",@nobits
+ 428               	connection_errors:
+ 429 0000 00        		.zero	1
+ 430               		.text
+ 431               	.Letext0:
+ 432               		.file 3 "/usr/avr/include/stdint.h"
+ 433               		.file 4 "quantum/matrix.h"
+ 434               		.file 5 "quantum/logging/debug.h"
+ 435               		.file 6 "quantum/split_common/split_util.h"
+ 436               		.file 7 "tmk_core/common/avr/gpio.h"
+ 437               		.file 8 "quantum/split_common/transport.h"
+ 438               		.file 9 "tmk_core/common/timer.h"
+ 439               		.file 10 "tmk_core/common/avr/xprintf.h"
+ 440               		.file 11 "/usr/avr/include/math.h"
+ 441               		.file 12 "tmk_core/common/usb_util.h"
+ 442               		.file 13 "quantum/sequencer/sequencer.h"
+DEFINED SYMBOLS
+                            *ABS*:0000000000000000 split_util.c
+     /tmp/cc0W2DyW.s:2      *ABS*:000000000000003e __SP_H__
+     /tmp/cc0W2DyW.s:3      *ABS*:000000000000003d __SP_L__
+     /tmp/cc0W2DyW.s:4      *ABS*:000000000000003f __SREG__
+     /tmp/cc0W2DyW.s:5      *ABS*:0000000000000000 __tmp_reg__
+     /tmp/cc0W2DyW.s:6      *ABS*:0000000000000001 __zero_reg__
+     /tmp/cc0W2DyW.s:13     .text.is_keyboard_master:0000000000000000 is_keyboard_master
+     /tmp/cc0W2DyW.s:417    .bss.usbstate.3:0000000000000000 usbstate.3
+     /tmp/cc0W2DyW.s:113    .text.is_keyboard_left:0000000000000000 is_keyboard_left
+     /tmp/cc0W2DyW.s:131    .text.split_pre_init:0000000000000000 split_pre_init
+     /tmp/cc0W2DyW.s:423    .data.isLeftHand:0000000000000000 isLeftHand
+     /tmp/cc0W2DyW.s:164    .text.split_post_init:0000000000000000 split_post_init
+     /tmp/cc0W2DyW.s:192    .text.is_transport_connected:0000000000000000 is_transport_connected
+     /tmp/cc0W2DyW.s:428    .bss.connection_errors:0000000000000000 connection_errors
+     /tmp/cc0W2DyW.s:217    .text.transport_master_if_connected:0000000000000000 transport_master_if_connected
+     /tmp/cc0W2DyW.s:412    .bss.connection_check_timer.2:0000000000000000 connection_check_timer.2
+     /tmp/cc0W2DyW.s:407    .progmem.data.__c.1:0000000000000000 __c.1
+     /tmp/cc0W2DyW.s:402    .progmem.data.__c.0:0000000000000000 __c.0
+
+UNDEFINED SYMBOLS
+usb_connected_state
+usb_disconnect
+transport_master_init
+transport_slave_init
+transport_master
+timer_read
+debug_config
+xputs
+timer_elapsed
+__do_copy_data
+__do_clear_bss

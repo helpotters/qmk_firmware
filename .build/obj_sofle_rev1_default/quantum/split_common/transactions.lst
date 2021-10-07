@@ -1,0 +1,2520 @@
+   1               		.file	"transactions.c"
+   2               	__SP_H__ = 0x3e
+   3               	__SP_L__ = 0x3d
+   4               	__SREG__ = 0x3f
+   5               	__tmp_reg__ = 0
+   6               	__zero_reg__ = 1
+   7               		.text
+   8               	.Ltext0:
+   9               		.cfi_sections	.debug_frame
+  10               		.section	.text.sync_timer_handlers_master,"ax",@progbits
+  12               	sync_timer_handlers_master:
+  13               	.LVL0:
+  14               	.LFB35:
+  15               		.file 1 "quantum/split_common/transactions.c"
+   1:quantum/split_common/transactions.c **** /* Copyright 2021 QMK
+   2:quantum/split_common/transactions.c ****  *
+   3:quantum/split_common/transactions.c ****  * This program is free software: you can redistribute it and/or modify
+   4:quantum/split_common/transactions.c ****  * it under the terms of the GNU General Public License as published by
+   5:quantum/split_common/transactions.c ****  * the Free Software Foundation, either version 2 of the License, or
+   6:quantum/split_common/transactions.c ****  * (at your option) any later version.
+   7:quantum/split_common/transactions.c ****  *
+   8:quantum/split_common/transactions.c ****  * This program is distributed in the hope that it will be useful,
+   9:quantum/split_common/transactions.c ****  * but WITHOUT ANY WARRANTY; without even the implied warranty of
+  10:quantum/split_common/transactions.c ****  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+  11:quantum/split_common/transactions.c ****  * GNU General Public License for more details.
+  12:quantum/split_common/transactions.c ****  *
+  13:quantum/split_common/transactions.c ****  * You should have received a copy of the GNU General Public License
+  14:quantum/split_common/transactions.c ****  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
+  15:quantum/split_common/transactions.c ****  */
+  16:quantum/split_common/transactions.c **** 
+  17:quantum/split_common/transactions.c **** #include <string.h>
+  18:quantum/split_common/transactions.c **** #include <stddef.h>
+  19:quantum/split_common/transactions.c **** 
+  20:quantum/split_common/transactions.c **** #include "crc.h"
+  21:quantum/split_common/transactions.c **** #include "debug.h"
+  22:quantum/split_common/transactions.c **** #include "matrix.h"
+  23:quantum/split_common/transactions.c **** #include "quantum.h"
+  24:quantum/split_common/transactions.c **** #include "transactions.h"
+  25:quantum/split_common/transactions.c **** #include "transport.h"
+  26:quantum/split_common/transactions.c **** #include "split_util.h"
+  27:quantum/split_common/transactions.c **** #include "transaction_id_define.h"
+  28:quantum/split_common/transactions.c **** 
+  29:quantum/split_common/transactions.c **** #define SYNC_TIMER_OFFSET 2
+  30:quantum/split_common/transactions.c **** 
+  31:quantum/split_common/transactions.c **** #ifndef FORCED_SYNC_THROTTLE_MS
+  32:quantum/split_common/transactions.c **** #    define FORCED_SYNC_THROTTLE_MS 100
+  33:quantum/split_common/transactions.c **** #endif  // FORCED_SYNC_THROTTLE_MS
+  34:quantum/split_common/transactions.c **** 
+  35:quantum/split_common/transactions.c **** #define sizeof_member(type, member) sizeof(((type *)NULL)->member)
+  36:quantum/split_common/transactions.c **** 
+  37:quantum/split_common/transactions.c **** #define trans_initiator2target_initializer_cb(member, cb) \
+  38:quantum/split_common/transactions.c ****     { &dummy, sizeof_member(split_shared_memory_t, member), offsetof(split_shared_memory_t, member)
+  39:quantum/split_common/transactions.c **** #define trans_initiator2target_initializer(member) trans_initiator2target_initializer_cb(member, NU
+  40:quantum/split_common/transactions.c **** 
+  41:quantum/split_common/transactions.c **** #define trans_target2initiator_initializer_cb(member, cb) \
+  42:quantum/split_common/transactions.c ****     { &dummy, 0, 0, sizeof_member(split_shared_memory_t, member), offsetof(split_shared_memory_t, m
+  43:quantum/split_common/transactions.c **** #define trans_target2initiator_initializer(member) trans_target2initiator_initializer_cb(member, NU
+  44:quantum/split_common/transactions.c **** 
+  45:quantum/split_common/transactions.c **** #define transport_write(id, data, length)          transport_execute_transaction(id, data, length, 
+  46:quantum/split_common/transactions.c **** #define transport_read(id, data, length)           transport_execute_transaction(id, NULL, 0, data,
+  47:quantum/split_common/transactions.c **** 
+  48:quantum/split_common/transactions.c **** #if defined(SPLIT_TRANSACTION_IDS_KB) || defined(SPLIT_TRANSACTION_IDS_USER)
+  49:quantum/split_common/transactions.c **** // Forward-declare the RPC callback handlers
+  50:quantum/split_common/transactions.c **** void slave_rpc_info_callback(uint8_t initiator2target_buffer_size, const void *initiator2target_buf
+  51:quantum/split_common/transactions.c **** void slave_rpc_exec_callback(uint8_t initiator2target_buffer_size, const void *initiator2target_buf
+  52:quantum/split_common/transactions.c **** #endif  // defined(SPLIT_TRANSACTION_IDS_KB) || defined(SPLIT_TRANSACTION_IDS_USER)
+  53:quantum/split_common/transactions.c **** 
+  54:quantum/split_common/transactions.c **** ////////////////////////////////////////////////////
+  55:quantum/split_common/transactions.c **** // Helpers
+  56:quantum/split_common/transactions.c **** 
+  57:quantum/split_common/transactions.c **** static bool transaction_handler_master(matrix_row_t master_matrix[], matrix_row_t slave_matrix[], c
+  58:quantum/split_common/transactions.c ****     int num_retries = is_transport_connected() ? 10 : 1;
+  59:quantum/split_common/transactions.c ****     for (int iter = 1; iter <= num_retries; ++iter) {
+  60:quantum/split_common/transactions.c ****         if (iter > 1) {
+  61:quantum/split_common/transactions.c ****             for (int i = 0; i < iter * iter; ++i) {
+  62:quantum/split_common/transactions.c ****                 wait_us(10);
+  63:quantum/split_common/transactions.c ****             }
+  64:quantum/split_common/transactions.c ****         }
+  65:quantum/split_common/transactions.c ****         bool this_okay = true;
+  66:quantum/split_common/transactions.c ****         ATOMIC_BLOCK_FORCEON { this_okay = handler(master_matrix, slave_matrix); };
+  67:quantum/split_common/transactions.c ****         if (this_okay) return true;
+  68:quantum/split_common/transactions.c ****     }
+  69:quantum/split_common/transactions.c ****     dprintf("Failed to execute %s\n", prefix);
+  70:quantum/split_common/transactions.c ****     return false;
+  71:quantum/split_common/transactions.c **** }
+  72:quantum/split_common/transactions.c **** 
+  73:quantum/split_common/transactions.c **** #define TRANSACTION_HANDLER_MASTER(prefix)                                                         
+  74:quantum/split_common/transactions.c ****     do {                                                                                           
+  75:quantum/split_common/transactions.c ****         if (!transaction_handler_master(master_matrix, slave_matrix, #prefix, &prefix##_handlers_ma
+  76:quantum/split_common/transactions.c ****     } while (0)
+  77:quantum/split_common/transactions.c **** 
+  78:quantum/split_common/transactions.c **** #define TRANSACTION_HANDLER_SLAVE(prefix)                                               \
+  79:quantum/split_common/transactions.c ****     do {                                                                                \
+  80:quantum/split_common/transactions.c ****         ATOMIC_BLOCK_FORCEON { prefix##_handlers_slave(master_matrix, slave_matrix); }; \
+  81:quantum/split_common/transactions.c ****     } while (0)
+  82:quantum/split_common/transactions.c **** 
+  83:quantum/split_common/transactions.c **** inline static bool read_if_checksum_mismatch(int8_t trans_id_checksum, int8_t trans_id_retrieve, ui
+  84:quantum/split_common/transactions.c ****     uint8_t curr_checksum;
+  85:quantum/split_common/transactions.c ****     bool    okay = transport_read(trans_id_checksum, &curr_checksum, sizeof(curr_checksum));
+  86:quantum/split_common/transactions.c ****     if (okay && (timer_elapsed32(*last_update) >= FORCED_SYNC_THROTTLE_MS || curr_checksum != crc8(
+  87:quantum/split_common/transactions.c ****         okay &= transport_read(trans_id_retrieve, destination, length);
+  88:quantum/split_common/transactions.c ****         okay &= curr_checksum == crc8(equiv_shmem, length);
+  89:quantum/split_common/transactions.c ****         if (okay) {
+  90:quantum/split_common/transactions.c ****             *last_update = timer_read32();
+  91:quantum/split_common/transactions.c ****         }
+  92:quantum/split_common/transactions.c ****     } else {
+  93:quantum/split_common/transactions.c ****         memcpy(destination, equiv_shmem, length);
+  94:quantum/split_common/transactions.c ****     }
+  95:quantum/split_common/transactions.c ****     return okay;
+  96:quantum/split_common/transactions.c **** }
+  97:quantum/split_common/transactions.c **** 
+  98:quantum/split_common/transactions.c **** inline static bool send_if_condition(int8_t trans_id, uint32_t *last_update, bool condition, void *
+  99:quantum/split_common/transactions.c ****     bool okay = true;
+ 100:quantum/split_common/transactions.c ****     if (timer_elapsed32(*last_update) >= FORCED_SYNC_THROTTLE_MS || condition) {
+ 101:quantum/split_common/transactions.c ****         okay &= transport_write(trans_id, source, length);
+ 102:quantum/split_common/transactions.c ****         if (okay) {
+ 103:quantum/split_common/transactions.c ****             *last_update = timer_read32();
+ 104:quantum/split_common/transactions.c ****         }
+ 105:quantum/split_common/transactions.c ****     }
+ 106:quantum/split_common/transactions.c ****     return okay;
+ 107:quantum/split_common/transactions.c **** }
+ 108:quantum/split_common/transactions.c **** 
+ 109:quantum/split_common/transactions.c **** inline static bool send_if_data_mismatch(int8_t trans_id, uint32_t *last_update, void *source, cons
+ 110:quantum/split_common/transactions.c ****     // Just run a memcmp to compare the source and equivalent shmem location
+ 111:quantum/split_common/transactions.c ****     return send_if_condition(trans_id, last_update, (memcmp(source, equiv_shmem, length) != 0), sou
+ 112:quantum/split_common/transactions.c **** }
+ 113:quantum/split_common/transactions.c **** 
+ 114:quantum/split_common/transactions.c **** ////////////////////////////////////////////////////
+ 115:quantum/split_common/transactions.c **** // Slave matrix
+ 116:quantum/split_common/transactions.c **** 
+ 117:quantum/split_common/transactions.c **** static bool slave_matrix_handlers_master(matrix_row_t master_matrix[], matrix_row_t slave_matrix[])
+ 118:quantum/split_common/transactions.c ****     static uint32_t     last_update                    = 0;
+ 119:quantum/split_common/transactions.c ****     static matrix_row_t last_matrix[(MATRIX_ROWS) / 2] = {0};  // last successfully-read matrix, so
+ 120:quantum/split_common/transactions.c ****     matrix_row_t        temp_matrix[(MATRIX_ROWS) / 2];        // holding area while we test whethe
+ 121:quantum/split_common/transactions.c **** 
+ 122:quantum/split_common/transactions.c ****     bool okay = read_if_checksum_mismatch(GET_SLAVE_MATRIX_CHECKSUM, GET_SLAVE_MATRIX_DATA, &last_u
+ 123:quantum/split_common/transactions.c ****     if (okay) {
+ 124:quantum/split_common/transactions.c ****         // Checksum matches the received data, save as the last matrix state
+ 125:quantum/split_common/transactions.c ****         memcpy(last_matrix, temp_matrix, sizeof(temp_matrix));
+ 126:quantum/split_common/transactions.c ****     }
+ 127:quantum/split_common/transactions.c ****     // Copy out the last-known-good matrix state to the slave matrix
+ 128:quantum/split_common/transactions.c ****     memcpy(slave_matrix, last_matrix, sizeof(last_matrix));
+ 129:quantum/split_common/transactions.c ****     return okay;
+ 130:quantum/split_common/transactions.c **** }
+ 131:quantum/split_common/transactions.c **** 
+ 132:quantum/split_common/transactions.c **** static void slave_matrix_handlers_slave(matrix_row_t master_matrix[], matrix_row_t slave_matrix[]) 
+ 133:quantum/split_common/transactions.c ****     memcpy(split_shmem->smatrix.matrix, slave_matrix, sizeof(split_shmem->smatrix.matrix));
+ 134:quantum/split_common/transactions.c ****     split_shmem->smatrix.checksum = crc8(split_shmem->smatrix.matrix, sizeof(split_shmem->smatrix.m
+ 135:quantum/split_common/transactions.c **** }
+ 136:quantum/split_common/transactions.c **** 
+ 137:quantum/split_common/transactions.c **** // clang-format off
+ 138:quantum/split_common/transactions.c **** #define TRANSACTIONS_SLAVE_MATRIX_MASTER() TRANSACTION_HANDLER_MASTER(slave_matrix)
+ 139:quantum/split_common/transactions.c **** #define TRANSACTIONS_SLAVE_MATRIX_SLAVE() TRANSACTION_HANDLER_SLAVE(slave_matrix)
+ 140:quantum/split_common/transactions.c **** #define TRANSACTIONS_SLAVE_MATRIX_REGISTRATIONS \
+ 141:quantum/split_common/transactions.c ****     [GET_SLAVE_MATRIX_CHECKSUM] = trans_target2initiator_initializer(smatrix.checksum), \
+ 142:quantum/split_common/transactions.c ****     [GET_SLAVE_MATRIX_DATA]     = trans_target2initiator_initializer(smatrix.matrix),
+ 143:quantum/split_common/transactions.c **** // clang-format on
+ 144:quantum/split_common/transactions.c **** 
+ 145:quantum/split_common/transactions.c **** ////////////////////////////////////////////////////
+ 146:quantum/split_common/transactions.c **** // Master matrix
+ 147:quantum/split_common/transactions.c **** 
+ 148:quantum/split_common/transactions.c **** #ifdef SPLIT_TRANSPORT_MIRROR
+ 149:quantum/split_common/transactions.c **** 
+ 150:quantum/split_common/transactions.c **** static bool master_matrix_handlers_master(matrix_row_t master_matrix[], matrix_row_t slave_matrix[]
+ 151:quantum/split_common/transactions.c ****     static uint32_t last_update = 0;
+ 152:quantum/split_common/transactions.c ****     return send_if_data_mismatch(PUT_MASTER_MATRIX, &last_update, master_matrix, split_shmem->mmatr
+ 153:quantum/split_common/transactions.c **** }
+ 154:quantum/split_common/transactions.c **** 
+ 155:quantum/split_common/transactions.c **** static void master_matrix_handlers_slave(matrix_row_t master_matrix[], matrix_row_t slave_matrix[])
+ 156:quantum/split_common/transactions.c ****     // Always copy to the master matrix
+ 157:quantum/split_common/transactions.c ****     memcpy(master_matrix, split_shmem->mmatrix.matrix, sizeof(split_shmem->mmatrix.matrix));
+ 158:quantum/split_common/transactions.c **** }
+ 159:quantum/split_common/transactions.c **** 
+ 160:quantum/split_common/transactions.c **** #    define TRANSACTIONS_MASTER_MATRIX_MASTER()      TRANSACTION_HANDLER_MASTER(master_matrix)
+ 161:quantum/split_common/transactions.c **** #    define TRANSACTIONS_MASTER_MATRIX_SLAVE()       TRANSACTION_HANDLER_SLAVE(master_matrix)
+ 162:quantum/split_common/transactions.c **** #    define TRANSACTIONS_MASTER_MATRIX_REGISTRATIONS [PUT_MASTER_MATRIX] = trans_initiator2target_i
+ 163:quantum/split_common/transactions.c **** 
+ 164:quantum/split_common/transactions.c **** #else  // SPLIT_TRANSPORT_MIRROR
+ 165:quantum/split_common/transactions.c **** 
+ 166:quantum/split_common/transactions.c **** #    define TRANSACTIONS_MASTER_MATRIX_MASTER()
+ 167:quantum/split_common/transactions.c **** #    define TRANSACTIONS_MASTER_MATRIX_SLAVE()
+ 168:quantum/split_common/transactions.c **** #    define TRANSACTIONS_MASTER_MATRIX_REGISTRATIONS
+ 169:quantum/split_common/transactions.c **** 
+ 170:quantum/split_common/transactions.c **** #endif  // SPLIT_TRANSPORT_MIRROR
+ 171:quantum/split_common/transactions.c **** 
+ 172:quantum/split_common/transactions.c **** ////////////////////////////////////////////////////
+ 173:quantum/split_common/transactions.c **** // Encoders
+ 174:quantum/split_common/transactions.c **** 
+ 175:quantum/split_common/transactions.c **** #ifdef ENCODER_ENABLE
+ 176:quantum/split_common/transactions.c **** 
+ 177:quantum/split_common/transactions.c **** static bool encoder_handlers_master(matrix_row_t master_matrix[], matrix_row_t slave_matrix[]) {
+ 178:quantum/split_common/transactions.c ****     static uint32_t last_update = 0;
+ 179:quantum/split_common/transactions.c ****     uint8_t         temp_state[NUMBER_OF_ENCODERS];
+ 180:quantum/split_common/transactions.c **** 
+ 181:quantum/split_common/transactions.c ****     bool okay = read_if_checksum_mismatch(GET_ENCODERS_CHECKSUM, GET_ENCODERS_DATA, &last_update, t
+ 182:quantum/split_common/transactions.c ****     if (okay) encoder_update_raw(temp_state);
+ 183:quantum/split_common/transactions.c ****     return okay;
+ 184:quantum/split_common/transactions.c **** }
+ 185:quantum/split_common/transactions.c **** 
+ 186:quantum/split_common/transactions.c **** static void encoder_handlers_slave(matrix_row_t master_matrix[], matrix_row_t slave_matrix[]) {
+ 187:quantum/split_common/transactions.c ****     uint8_t encoder_state[NUMBER_OF_ENCODERS];
+ 188:quantum/split_common/transactions.c ****     encoder_state_raw(encoder_state);
+ 189:quantum/split_common/transactions.c ****     // Always prepare the encoder state for read.
+ 190:quantum/split_common/transactions.c ****     memcpy(split_shmem->encoders.state, encoder_state, sizeof(encoder_state));
+ 191:quantum/split_common/transactions.c ****     // Now update the checksum given that the encoders has been written to
+ 192:quantum/split_common/transactions.c ****     split_shmem->encoders.checksum = crc8(encoder_state, sizeof(encoder_state));
+ 193:quantum/split_common/transactions.c **** }
+ 194:quantum/split_common/transactions.c **** 
+ 195:quantum/split_common/transactions.c **** // clang-format off
+ 196:quantum/split_common/transactions.c **** #    define TRANSACTIONS_ENCODERS_MASTER() TRANSACTION_HANDLER_MASTER(encoder)
+ 197:quantum/split_common/transactions.c **** #    define TRANSACTIONS_ENCODERS_SLAVE() TRANSACTION_HANDLER_SLAVE(encoder)
+ 198:quantum/split_common/transactions.c **** #    define TRANSACTIONS_ENCODERS_REGISTRATIONS \
+ 199:quantum/split_common/transactions.c ****     [GET_ENCODERS_CHECKSUM] = trans_target2initiator_initializer(encoders.checksum), \
+ 200:quantum/split_common/transactions.c ****     [GET_ENCODERS_DATA]     = trans_target2initiator_initializer(encoders.state),
+ 201:quantum/split_common/transactions.c **** // clang-format on
+ 202:quantum/split_common/transactions.c **** 
+ 203:quantum/split_common/transactions.c **** #else  // ENCODER_ENABLE
+ 204:quantum/split_common/transactions.c **** 
+ 205:quantum/split_common/transactions.c **** #    define TRANSACTIONS_ENCODERS_MASTER()
+ 206:quantum/split_common/transactions.c **** #    define TRANSACTIONS_ENCODERS_SLAVE()
+ 207:quantum/split_common/transactions.c **** #    define TRANSACTIONS_ENCODERS_REGISTRATIONS
+ 208:quantum/split_common/transactions.c **** 
+ 209:quantum/split_common/transactions.c **** #endif  // ENCODER_ENABLE
+ 210:quantum/split_common/transactions.c **** 
+ 211:quantum/split_common/transactions.c **** ////////////////////////////////////////////////////
+ 212:quantum/split_common/transactions.c **** // Sync timer
+ 213:quantum/split_common/transactions.c **** 
+ 214:quantum/split_common/transactions.c **** #ifndef DISABLE_SYNC_TIMER
+ 215:quantum/split_common/transactions.c **** 
+ 216:quantum/split_common/transactions.c **** static bool sync_timer_handlers_master(matrix_row_t master_matrix[], matrix_row_t slave_matrix[]) {
+  16               		.loc 1 216 99 view -0
+  17               		.cfi_startproc
+  18               		.loc 1 216 99 is_stmt 0 view .LVU1
+  19 0000 0F93      		push r16
+  20               	.LCFI0:
+  21               		.cfi_def_cfa_offset 3
+  22               		.cfi_offset 16, -2
+  23 0002 1F93      		push r17
+  24               	.LCFI1:
+  25               		.cfi_def_cfa_offset 4
+  26               		.cfi_offset 17, -3
+  27 0004 CF93      		push r28
+  28               	.LCFI2:
+  29               		.cfi_def_cfa_offset 5
+  30               		.cfi_offset 28, -4
+  31 0006 DF93      		push r29
+  32               	.LCFI3:
+  33               		.cfi_def_cfa_offset 6
+  34               		.cfi_offset 29, -5
+  35 0008 CDB7      		in r28,__SP_L__
+  36 000a DEB7      		in r29,__SP_H__
+  37               	.LCFI4:
+  38               		.cfi_def_cfa_register 28
+  39 000c 2897      		sbiw r28,8
+  40               	.LCFI5:
+  41               		.cfi_def_cfa_offset 14
+  42 000e 0FB6      		in __tmp_reg__,__SREG__
+  43 0010 F894      		cli
+  44 0012 DEBF      		out __SP_H__,r29
+  45 0014 0FBE      		out __SREG__,__tmp_reg__
+  46 0016 CDBF      		out __SP_L__,r28
+  47               	/* prologue: function */
+  48               	/* frame size = 8 */
+  49               	/* stack size = 12 */
+  50               	.L__stack_usage = 12
+ 217:quantum/split_common/transactions.c ****     static uint32_t last_update = 0;
+  51               		.loc 1 217 5 is_stmt 1 view .LVU2
+ 218:quantum/split_common/transactions.c **** 
+ 219:quantum/split_common/transactions.c ****     bool okay = true;
+  52               		.loc 1 219 5 view .LVU3
+  53               	.LVL1:
+ 220:quantum/split_common/transactions.c ****     if (timer_elapsed32(last_update) >= FORCED_SYNC_THROTTLE_MS) {
+  54               		.loc 1 220 5 view .LVU4
+  55               		.loc 1 220 9 is_stmt 0 view .LVU5
+  56 0018 8091 0000 		lds r24,last_update.5
+  57 001c 9091 0000 		lds r25,last_update.5+1
+  58 0020 A091 0000 		lds r26,last_update.5+2
+  59 0024 B091 0000 		lds r27,last_update.5+3
+  60               	.LVL2:
+  61               		.loc 1 220 9 view .LVU6
+  62 0028 BC01      		movw r22,r24
+  63               	.LVL3:
+  64               		.loc 1 220 9 view .LVU7
+  65 002a CD01      		movw r24,r26
+  66 002c 0E94 0000 		call timer_elapsed32
+  67               	.LVL4:
+ 219:quantum/split_common/transactions.c ****     if (timer_elapsed32(last_update) >= FORCED_SYNC_THROTTLE_MS) {
+  68               		.loc 1 219 10 view .LVU8
+  69 0030 11E0      		ldi r17,lo8(1)
+  70               		.loc 1 220 8 view .LVU9
+  71 0032 6436      		cpi r22,100
+  72 0034 7105      		cpc r23,__zero_reg__
+  73 0036 8105      		cpc r24,__zero_reg__
+  74 0038 9105      		cpc r25,__zero_reg__
+  75 003a 00F0      		brlo .L1
+  76               	.LBB35:
+ 221:quantum/split_common/transactions.c ****         uint32_t sync_timer = sync_timer_read32() + SYNC_TIMER_OFFSET;
+  77               		.loc 1 221 9 is_stmt 1 view .LVU10
+  78               		.loc 1 221 31 is_stmt 0 view .LVU11
+  79 003c 0E94 0000 		call sync_timer_read32
+  80               	.LVL5:
+  81               		.loc 1 221 51 view .LVU12
+  82 0040 DC01      		movw r26,r24
+  83 0042 CB01      		movw r24,r22
+  84 0044 0296      		adiw r24,2
+  85 0046 A11D      		adc r26,__zero_reg__
+  86 0048 B11D      		adc r27,__zero_reg__
+  87               		.loc 1 221 18 view .LVU13
+  88 004a 8983      		std Y+1,r24
+  89 004c 9A83      		std Y+2,r25
+  90 004e AB83      		std Y+3,r26
+  91 0050 BC83      		std Y+4,r27
+ 222:quantum/split_common/transactions.c ****         okay &= transport_write(PUT_SYNC_TIMER, &sync_timer, sizeof(sync_timer));
+  92               		.loc 1 222 9 is_stmt 1 view .LVU14
+  93               		.loc 1 222 17 is_stmt 0 view .LVU15
+  94 0052 10E0      		ldi r17,0
+  95 0054 00E0      		ldi r16,0
+  96 0056 30E0      		ldi r19,0
+  97 0058 20E0      		ldi r18,0
+  98 005a 44E0      		ldi r20,lo8(4)
+  99 005c 50E0      		ldi r21,0
+ 100 005e BE01      		movw r22,r28
+ 101 0060 6F5F      		subi r22,-1
+ 102 0062 7F4F      		sbci r23,-1
+ 103 0064 84E0      		ldi r24,lo8(4)
+ 104 0066 0E94 0000 		call transport_execute_transaction
+ 105               	.LVL6:
+ 106 006a 182F      		mov r17,r24
+ 107               	.LVL7:
+ 223:quantum/split_common/transactions.c ****         if (okay) {
+ 108               		.loc 1 223 9 is_stmt 1 view .LVU16
+ 109               		.loc 1 223 12 is_stmt 0 view .LVU17
+ 110 006c 8823      		tst r24
+ 111 006e 01F0      		breq .L1
+ 224:quantum/split_common/transactions.c ****             last_update = timer_read32();
+ 112               		.loc 1 224 13 is_stmt 1 view .LVU18
+ 113               		.loc 1 224 27 is_stmt 0 view .LVU19
+ 114 0070 0E94 0000 		call timer_read32
+ 115               	.LVL8:
+ 116 0074 6093 0000 		sts last_update.5,r22
+ 117 0078 7093 0000 		sts last_update.5+1,r23
+ 118 007c 8093 0000 		sts last_update.5+2,r24
+ 119 0080 9093 0000 		sts last_update.5+3,r25
+ 120               	.LVL9:
+ 121               	.L1:
+ 122               		.loc 1 224 27 view .LVU20
+ 123               	.LBE35:
+ 225:quantum/split_common/transactions.c ****         }
+ 226:quantum/split_common/transactions.c ****     }
+ 227:quantum/split_common/transactions.c ****     return okay;
+ 228:quantum/split_common/transactions.c **** }
+ 124               		.loc 1 228 1 view .LVU21
+ 125 0084 812F      		mov r24,r17
+ 126               	/* epilogue start */
+ 127 0086 2896      		adiw r28,8
+ 128 0088 0FB6      		in __tmp_reg__,__SREG__
+ 129 008a F894      		cli
+ 130 008c DEBF      		out __SP_H__,r29
+ 131 008e 0FBE      		out __SREG__,__tmp_reg__
+ 132 0090 CDBF      		out __SP_L__,r28
+ 133 0092 DF91      		pop r29
+ 134 0094 CF91      		pop r28
+ 135 0096 1F91      		pop r17
+ 136 0098 0F91      		pop r16
+ 137 009a 0895      		ret
+ 138               		.cfi_endproc
+ 139               	.LFE35:
+ 141               		.section	.text.transaction_handler_master,"ax",@progbits
+ 143               	transaction_handler_master:
+ 144               	.LVL10:
+ 145               	.LFB27:
+  57:quantum/split_common/transactions.c ****     int num_retries = is_transport_connected() ? 10 : 1;
+ 146               		.loc 1 57 195 is_stmt 1 view -0
+ 147               		.cfi_startproc
+  57:quantum/split_common/transactions.c ****     int num_retries = is_transport_connected() ? 10 : 1;
+ 148               		.loc 1 57 195 is_stmt 0 view .LVU23
+ 149 0000 7F92      		push r7
+ 150               	.LCFI6:
+ 151               		.cfi_def_cfa_offset 3
+ 152               		.cfi_offset 7, -2
+ 153 0002 8F92      		push r8
+ 154               	.LCFI7:
+ 155               		.cfi_def_cfa_offset 4
+ 156               		.cfi_offset 8, -3
+ 157 0004 9F92      		push r9
+ 158               	.LCFI8:
+ 159               		.cfi_def_cfa_offset 5
+ 160               		.cfi_offset 9, -4
+ 161 0006 AF92      		push r10
+ 162               	.LCFI9:
+ 163               		.cfi_def_cfa_offset 6
+ 164               		.cfi_offset 10, -5
+ 165 0008 BF92      		push r11
+ 166               	.LCFI10:
+ 167               		.cfi_def_cfa_offset 7
+ 168               		.cfi_offset 11, -6
+ 169 000a CF92      		push r12
+ 170               	.LCFI11:
+ 171               		.cfi_def_cfa_offset 8
+ 172               		.cfi_offset 12, -7
+ 173 000c DF92      		push r13
+ 174               	.LCFI12:
+ 175               		.cfi_def_cfa_offset 9
+ 176               		.cfi_offset 13, -8
+ 177 000e EF92      		push r14
+ 178               	.LCFI13:
+ 179               		.cfi_def_cfa_offset 10
+ 180               		.cfi_offset 14, -9
+ 181 0010 FF92      		push r15
+ 182               	.LCFI14:
+ 183               		.cfi_def_cfa_offset 11
+ 184               		.cfi_offset 15, -10
+ 185 0012 0F93      		push r16
+ 186               	.LCFI15:
+ 187               		.cfi_def_cfa_offset 12
+ 188               		.cfi_offset 16, -11
+ 189 0014 1F93      		push r17
+ 190               	.LCFI16:
+ 191               		.cfi_def_cfa_offset 13
+ 192               		.cfi_offset 17, -12
+ 193 0016 CF93      		push r28
+ 194               	.LCFI17:
+ 195               		.cfi_def_cfa_offset 14
+ 196               		.cfi_offset 28, -13
+ 197 0018 DF93      		push r29
+ 198               	.LCFI18:
+ 199               		.cfi_def_cfa_offset 15
+ 200               		.cfi_offset 29, -14
+ 201               	/* prologue: function */
+ 202               	/* frame size = 0 */
+ 203               	/* stack size = 13 */
+ 204               	.L__stack_usage = 13
+ 205 001a E82E      		mov r14,r24
+ 206 001c 992E      		mov r9,r25
+ 207 001e 862E      		mov r8,r22
+ 208 0020 772E      		mov r7,r23
+ 209 0022 042F      		mov r16,r20
+ 210 0024 F52E      		mov r15,r21
+ 211 0026 6901      		movw r12,r18
+  58:quantum/split_common/transactions.c ****     for (int iter = 1; iter <= num_retries; ++iter) {
+ 212               		.loc 1 58 5 is_stmt 1 view .LVU24
+  58:quantum/split_common/transactions.c ****     for (int iter = 1; iter <= num_retries; ++iter) {
+ 213               		.loc 1 58 23 is_stmt 0 view .LVU25
+ 214 0028 0E94 0000 		call is_transport_connected
+ 215               	.LVL11:
+  58:quantum/split_common/transactions.c ****     for (int iter = 1; iter <= num_retries; ++iter) {
+ 216               		.loc 1 58 53 view .LVU26
+ 217 002c AA24      		clr r10
+ 218 002e A394      		inc r10
+ 219 0030 B12C      		mov r11,__zero_reg__
+ 220 0032 8823      		tst r24
+ 221 0034 01F0      		breq .L9
+ 222 0036 8AE0      		ldi r24,lo8(10)
+ 223 0038 A82E      		mov r10,r24
+ 224 003a B12C      		mov r11,__zero_reg__
+ 225               	.L9:
+ 226               	.LVL12:
+  59:quantum/split_common/transactions.c ****         if (iter > 1) {
+ 227               		.loc 1 59 5 is_stmt 1 discriminator 4 view .LVU27
+ 228               	.LBB36:
+  59:quantum/split_common/transactions.c ****         if (iter > 1) {
+ 229               		.loc 1 59 10 discriminator 4 view .LVU28
+  59:quantum/split_common/transactions.c ****         if (iter > 1) {
+ 230               		.loc 1 59 29 discriminator 4 view .LVU29
+ 231               	.LBB37:
+  60:quantum/split_common/transactions.c ****             for (int i = 0; i < iter * iter; ++i) {
+ 232               		.loc 1 60 9 discriminator 4 view .LVU30
+ 233               	.LBE37:
+  59:quantum/split_common/transactions.c ****         if (iter > 1) {
+ 234               		.loc 1 59 14 is_stmt 0 discriminator 4 view .LVU31
+ 235 003c C1E0      		ldi r28,lo8(1)
+ 236 003e D0E0      		ldi r29,0
+ 237               	.LVL13:
+ 238               	.L10:
+ 239               	.LBB46:
+  65:quantum/split_common/transactions.c ****         ATOMIC_BLOCK_FORCEON { this_okay = handler(master_matrix, slave_matrix); };
+ 240               		.loc 1 65 9 is_stmt 1 view .LVU32
+  66:quantum/split_common/transactions.c ****         if (this_okay) return true;
+ 241               		.loc 1 66 9 view .LVU33
+ 242               	.LBB38:
+  66:quantum/split_common/transactions.c ****         if (this_okay) return true;
+ 243               		.loc 1 66 9 view .LVU34
+ 244               	.LBB39:
+ 245               	.LBI39:
+ 246               		.file 2 "/usr/avr/include/util/atomic.h"
+   1:/usr/avr/include/util/atomic.h **** /* Copyright (c) 2007 Dean Camera
+   2:/usr/avr/include/util/atomic.h ****    All rights reserved.
+   3:/usr/avr/include/util/atomic.h **** 
+   4:/usr/avr/include/util/atomic.h ****    Redistribution and use in source and binary forms, with or without
+   5:/usr/avr/include/util/atomic.h ****    modification, are permitted provided that the following conditions are met:
+   6:/usr/avr/include/util/atomic.h **** 
+   7:/usr/avr/include/util/atomic.h ****    * Redistributions of source code must retain the above copyright
+   8:/usr/avr/include/util/atomic.h ****      notice, this list of conditions and the following disclaimer.
+   9:/usr/avr/include/util/atomic.h **** 
+  10:/usr/avr/include/util/atomic.h ****    * Redistributions in binary form must reproduce the above copyright
+  11:/usr/avr/include/util/atomic.h ****      notice, this list of conditions and the following disclaimer in
+  12:/usr/avr/include/util/atomic.h ****      the documentation and/or other materials provided with the
+  13:/usr/avr/include/util/atomic.h ****      distribution.
+  14:/usr/avr/include/util/atomic.h **** 
+  15:/usr/avr/include/util/atomic.h ****    * Neither the name of the copyright holders nor the names of
+  16:/usr/avr/include/util/atomic.h ****      contributors may be used to endorse or promote products derived
+  17:/usr/avr/include/util/atomic.h ****      from this software without specific prior written permission.
+  18:/usr/avr/include/util/atomic.h **** 
+  19:/usr/avr/include/util/atomic.h ****   THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+  20:/usr/avr/include/util/atomic.h ****   AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+  21:/usr/avr/include/util/atomic.h ****   IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+  22:/usr/avr/include/util/atomic.h ****   ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER OR CONTRIBUTORS BE
+  23:/usr/avr/include/util/atomic.h ****   LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
+  24:/usr/avr/include/util/atomic.h ****   CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
+  25:/usr/avr/include/util/atomic.h ****   SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
+  26:/usr/avr/include/util/atomic.h ****   INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
+  27:/usr/avr/include/util/atomic.h ****   CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
+  28:/usr/avr/include/util/atomic.h ****   ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
+  29:/usr/avr/include/util/atomic.h ****   POSSIBILITY OF SUCH DAMAGE.
+  30:/usr/avr/include/util/atomic.h **** */
+  31:/usr/avr/include/util/atomic.h **** 
+  32:/usr/avr/include/util/atomic.h **** /* $Id: atomic.h 2158 2010-06-10 15:48:28Z joerg_wunsch $ */
+  33:/usr/avr/include/util/atomic.h **** 
+  34:/usr/avr/include/util/atomic.h **** #ifndef _UTIL_ATOMIC_H_
+  35:/usr/avr/include/util/atomic.h **** #define _UTIL_ATOMIC_H_ 1
+  36:/usr/avr/include/util/atomic.h **** 
+  37:/usr/avr/include/util/atomic.h **** #include <avr/io.h>
+  38:/usr/avr/include/util/atomic.h **** #include <avr/interrupt.h>
+  39:/usr/avr/include/util/atomic.h **** 
+  40:/usr/avr/include/util/atomic.h **** #if !defined(__DOXYGEN__)
+  41:/usr/avr/include/util/atomic.h **** /* Internal helper functions. */
+  42:/usr/avr/include/util/atomic.h **** static __inline__ uint8_t __iSeiRetVal(void)
+  43:/usr/avr/include/util/atomic.h **** {
+  44:/usr/avr/include/util/atomic.h ****     sei();
+  45:/usr/avr/include/util/atomic.h ****     return 1;
+  46:/usr/avr/include/util/atomic.h **** }
+  47:/usr/avr/include/util/atomic.h **** 
+  48:/usr/avr/include/util/atomic.h **** static __inline__ uint8_t __iCliRetVal(void)
+ 247               		.loc 2 48 27 view .LVU35
+ 248               	.LBB40:
+  49:/usr/avr/include/util/atomic.h **** {
+  50:/usr/avr/include/util/atomic.h ****     cli();
+ 249               		.loc 2 50 5 view .LVU36
+ 250               	/* #APP */
+ 251               	 ;  50 "/usr/avr/include/util/atomic.h" 1
+ 252 0040 F894      		cli
+ 253               	 ;  0 "" 2
+  51:/usr/avr/include/util/atomic.h ****     return 1;
+ 254               		.loc 2 51 5 view .LVU37
+ 255               	.LVL14:
+ 256               		.loc 2 51 5 is_stmt 0 view .LVU38
+ 257               	/* #NOAPP */
+ 258               	.LBE40:
+ 259               	.LBE39:
+  66:quantum/split_common/transactions.c ****         if (this_okay) return true;
+ 260               		.loc 1 66 9 is_stmt 1 view .LVU39
+  66:quantum/split_common/transactions.c ****         if (this_okay) return true;
+ 261               		.loc 1 66 32 view .LVU40
+  66:quantum/split_common/transactions.c ****         if (this_okay) return true;
+ 262               		.loc 1 66 44 is_stmt 0 view .LVU41
+ 263 0042 682D      		mov r22,r8
+ 264 0044 772D      		mov r23,r7
+ 265 0046 8E2D      		mov r24,r14
+ 266 0048 992D      		mov r25,r9
+ 267 004a F601      		movw r30,r12
+ 268 004c 0995      		icall
+ 269               	.LVL15:
+ 270 004e 182F      		mov r17,r24
+ 271               	.LVL16:
+  66:quantum/split_common/transactions.c ****         if (this_okay) return true;
+ 272               		.loc 1 66 9 is_stmt 1 view .LVU42
+  66:quantum/split_common/transactions.c ****         if (this_okay) return true;
+ 273               		.loc 1 66 9 view .LVU43
+ 274               	.LBB41:
+ 275               	.LBI41:
+  52:/usr/avr/include/util/atomic.h **** }
+  53:/usr/avr/include/util/atomic.h **** 
+  54:/usr/avr/include/util/atomic.h **** static __inline__ void __iSeiParam(const uint8_t *__s)
+ 276               		.loc 2 54 24 view .LVU44
+ 277               	.LBB42:
+  55:/usr/avr/include/util/atomic.h **** {
+  56:/usr/avr/include/util/atomic.h ****     sei();
+ 278               		.loc 2 56 5 view .LVU45
+ 279               	/* #APP */
+ 280               	 ;  56 "/usr/avr/include/util/atomic.h" 1
+ 281 0050 7894      		sei
+ 282               	 ;  0 "" 2
+  57:/usr/avr/include/util/atomic.h ****     __asm__ volatile ("" ::: "memory");
+ 283               		.loc 2 57 5 view .LVU46
+  58:/usr/avr/include/util/atomic.h ****     (void)__s;
+ 284               		.loc 2 58 5 view .LVU47
+ 285               	.LVL17:
+ 286               		.loc 2 58 5 is_stmt 0 view .LVU48
+ 287               	/* #NOAPP */
+ 288               	.LBE42:
+ 289               	.LBE41:
+ 290               	.LBE38:
+  66:quantum/split_common/transactions.c ****         if (this_okay) return true;
+ 291               		.loc 1 66 83 is_stmt 1 view .LVU49
+  67:quantum/split_common/transactions.c ****     }
+ 292               		.loc 1 67 9 view .LVU50
+  67:quantum/split_common/transactions.c ****     }
+ 293               		.loc 1 67 12 is_stmt 0 view .LVU51
+ 294 0052 8111      		cpse r24,__zero_reg__
+ 295 0054 00C0      		rjmp .L8
+ 296               	.LBE46:
+  59:quantum/split_common/transactions.c ****         if (iter > 1) {
+ 297               		.loc 1 59 45 is_stmt 1 discriminator 2 view .LVU52
+ 298 0056 2196      		adiw r28,1
+ 299               	.LVL18:
+  59:quantum/split_common/transactions.c ****         if (iter > 1) {
+ 300               		.loc 1 59 29 discriminator 2 view .LVU53
+ 301 0058 AC16      		cp r10,r28
+ 302 005a BD06      		cpc r11,r29
+ 303 005c 04F4      		brge .L13
+ 304               	.LBE36:
+  69:quantum/split_common/transactions.c ****     return false;
+ 305               		.loc 1 69 5 view .LVU54
+  69:quantum/split_common/transactions.c ****     return false;
+ 306               		.loc 1 69 5 view .LVU55
+ 307 005e 8091 0000 		lds r24,debug_config
+ 308 0062 80FF      		sbrs r24,0
+ 309 0064 00C0      		rjmp .L8
+  69:quantum/split_common/transactions.c ****     return false;
+ 310               		.loc 1 69 5 discriminator 1 view .LVU56
+ 311               	.LBB48:
+  69:quantum/split_common/transactions.c ****     return false;
+ 312               		.loc 1 69 5 discriminator 1 view .LVU57
+  69:quantum/split_common/transactions.c ****     return false;
+ 313               		.loc 1 69 5 discriminator 1 view .LVU58
+ 314               	.LBE48:
+ 315 0066 FF92      		push r15
+ 316               	.LCFI19:
+ 317               		.cfi_def_cfa_offset 16
+ 318 0068 0F93      		push r16
+ 319               	.LCFI20:
+ 320               		.cfi_def_cfa_offset 17
+ 321 006a 80E0      		ldi r24,lo8(__c.1)
+ 322 006c 90E0      		ldi r25,hi8(__c.1)
+ 323 006e 9F93      		push r25
+ 324               	.LCFI21:
+ 325               		.cfi_def_cfa_offset 18
+ 326 0070 8F93      		push r24
+ 327               	.LCFI22:
+ 328               		.cfi_def_cfa_offset 19
+ 329 0072 0E94 0000 		call __xprintf
+ 330               	.LVL19:
+ 331 0076 0F90      		pop __tmp_reg__
+ 332 0078 0F90      		pop __tmp_reg__
+ 333 007a 0F90      		pop __tmp_reg__
+ 334 007c 0F90      		pop __tmp_reg__
+ 335               	.LCFI23:
+ 336               		.cfi_def_cfa_offset 15
+ 337               	.LVL20:
+ 338               	.L8:
+  71:quantum/split_common/transactions.c **** 
+ 339               		.loc 1 71 1 is_stmt 0 view .LVU59
+ 340 007e 812F      		mov r24,r17
+ 341               	/* epilogue start */
+ 342 0080 DF91      		pop r29
+ 343 0082 CF91      		pop r28
+ 344 0084 1F91      		pop r17
+ 345               	.LVL21:
+  71:quantum/split_common/transactions.c **** 
+ 346               		.loc 1 71 1 view .LVU60
+ 347 0086 0F91      		pop r16
+ 348 0088 FF90      		pop r15
+ 349 008a EF90      		pop r14
+ 350 008c DF90      		pop r13
+ 351 008e CF90      		pop r12
+ 352               	.LVL22:
+  71:quantum/split_common/transactions.c **** 
+ 353               		.loc 1 71 1 view .LVU61
+ 354 0090 BF90      		pop r11
+ 355 0092 AF90      		pop r10
+ 356               	.LVL23:
+  71:quantum/split_common/transactions.c **** 
+ 357               		.loc 1 71 1 view .LVU62
+ 358 0094 9F90      		pop r9
+ 359 0096 8F90      		pop r8
+ 360 0098 7F90      		pop r7
+ 361 009a 0895      		ret
+ 362               	.LVL24:
+ 363               	.L13:
+ 364               	.LBB49:
+ 365               	.LBB47:
+ 366               	.LBB43:
+  61:quantum/split_common/transactions.c ****                 wait_us(10);
+ 367               		.loc 1 61 38 view .LVU63
+ 368 009c CC9F      		mul r28,r28
+ 369 009e 9001      		movw r18,r0
+ 370 00a0 CD9F      		mul r28,r29
+ 371 00a2 300D      		add r19,r0
+ 372 00a4 300D      		add r19,r0
+ 373 00a6 1124      		clr r1
+  61:quantum/split_common/transactions.c ****                 wait_us(10);
+ 374               		.loc 1 61 22 view .LVU64
+ 375 00a8 90E0      		ldi r25,0
+ 376 00aa 80E0      		ldi r24,0
+ 377               	.LVL25:
+ 378               	.L11:
+  62:quantum/split_common/transactions.c ****             }
+ 379               		.loc 1 62 17 is_stmt 1 view .LVU65
+  62:quantum/split_common/transactions.c ****             }
+ 380               		.loc 1 62 17 view .LVU66
+  62:quantum/split_common/transactions.c ****             }
+ 381               		.loc 1 62 17 view .LVU67
+ 382               	.LBB44:
+ 383               	.LBI44:
+ 384               		.file 3 "/usr/avr/include/util/delay.h"
+   1:/usr/avr/include/util/delay.h **** /* Copyright (c) 2002, Marek Michalkiewicz
+   2:/usr/avr/include/util/delay.h ****    Copyright (c) 2004,2005,2007 Joerg Wunsch
+   3:/usr/avr/include/util/delay.h ****    Copyright (c) 2007  Florin-Viorel Petrov
+   4:/usr/avr/include/util/delay.h ****    All rights reserved.
+   5:/usr/avr/include/util/delay.h **** 
+   6:/usr/avr/include/util/delay.h ****    Redistribution and use in source and binary forms, with or without
+   7:/usr/avr/include/util/delay.h ****    modification, are permitted provided that the following conditions are met:
+   8:/usr/avr/include/util/delay.h **** 
+   9:/usr/avr/include/util/delay.h ****    * Redistributions of source code must retain the above copyright
+  10:/usr/avr/include/util/delay.h ****      notice, this list of conditions and the following disclaimer.
+  11:/usr/avr/include/util/delay.h **** 
+  12:/usr/avr/include/util/delay.h ****    * Redistributions in binary form must reproduce the above copyright
+  13:/usr/avr/include/util/delay.h ****      notice, this list of conditions and the following disclaimer in
+  14:/usr/avr/include/util/delay.h ****      the documentation and/or other materials provided with the
+  15:/usr/avr/include/util/delay.h ****      distribution.
+  16:/usr/avr/include/util/delay.h **** 
+  17:/usr/avr/include/util/delay.h ****    * Neither the name of the copyright holders nor the names of
+  18:/usr/avr/include/util/delay.h ****      contributors may be used to endorse or promote products derived
+  19:/usr/avr/include/util/delay.h ****      from this software without specific prior written permission.
+  20:/usr/avr/include/util/delay.h **** 
+  21:/usr/avr/include/util/delay.h ****   THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+  22:/usr/avr/include/util/delay.h ****   AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+  23:/usr/avr/include/util/delay.h ****   IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+  24:/usr/avr/include/util/delay.h ****   ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER OR CONTRIBUTORS BE
+  25:/usr/avr/include/util/delay.h ****   LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
+  26:/usr/avr/include/util/delay.h ****   CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
+  27:/usr/avr/include/util/delay.h ****   SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
+  28:/usr/avr/include/util/delay.h ****   INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
+  29:/usr/avr/include/util/delay.h ****   CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
+  30:/usr/avr/include/util/delay.h ****   ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
+  31:/usr/avr/include/util/delay.h ****   POSSIBILITY OF SUCH DAMAGE. */
+  32:/usr/avr/include/util/delay.h **** 
+  33:/usr/avr/include/util/delay.h **** /* $Id: delay.h.in 2506 2016-02-08 10:05:45Z joerg_wunsch $ */
+  34:/usr/avr/include/util/delay.h **** 
+  35:/usr/avr/include/util/delay.h **** #ifndef _UTIL_DELAY_H_
+  36:/usr/avr/include/util/delay.h **** #define _UTIL_DELAY_H_ 1
+  37:/usr/avr/include/util/delay.h **** 
+  38:/usr/avr/include/util/delay.h **** #ifndef __DOXYGEN__
+  39:/usr/avr/include/util/delay.h **** #  ifndef __HAS_DELAY_CYCLES
+  40:/usr/avr/include/util/delay.h **** #    define __HAS_DELAY_CYCLES 1
+  41:/usr/avr/include/util/delay.h **** #  endif
+  42:/usr/avr/include/util/delay.h **** #endif  /* __DOXYGEN__ */
+  43:/usr/avr/include/util/delay.h **** 
+  44:/usr/avr/include/util/delay.h **** #include <inttypes.h>
+  45:/usr/avr/include/util/delay.h **** #include <util/delay_basic.h>
+  46:/usr/avr/include/util/delay.h **** #include <math.h>
+  47:/usr/avr/include/util/delay.h **** 
+  48:/usr/avr/include/util/delay.h **** /** \file */
+  49:/usr/avr/include/util/delay.h **** /** \defgroup util_delay <util/delay.h>: Convenience functions for busy-wait delay loops
+  50:/usr/avr/include/util/delay.h ****     \code
+  51:/usr/avr/include/util/delay.h ****     #define F_CPU 1000000UL  // 1 MHz
+  52:/usr/avr/include/util/delay.h ****     //#define F_CPU 14.7456E6
+  53:/usr/avr/include/util/delay.h ****     #include <util/delay.h>
+  54:/usr/avr/include/util/delay.h ****     \endcode
+  55:/usr/avr/include/util/delay.h **** 
+  56:/usr/avr/include/util/delay.h ****     \note As an alternative method, it is possible to pass the
+  57:/usr/avr/include/util/delay.h ****     F_CPU macro down to the compiler from the Makefile.
+  58:/usr/avr/include/util/delay.h ****     Obviously, in that case, no \c \#define statement should be
+  59:/usr/avr/include/util/delay.h ****     used.
+  60:/usr/avr/include/util/delay.h **** 
+  61:/usr/avr/include/util/delay.h ****     The functions in this header file are wrappers around the basic
+  62:/usr/avr/include/util/delay.h ****     busy-wait functions from <util/delay_basic.h>.  They are meant as
+  63:/usr/avr/include/util/delay.h ****     convenience functions where actual time values can be specified
+  64:/usr/avr/include/util/delay.h ****     rather than a number of cycles to wait for.  The idea behind is
+  65:/usr/avr/include/util/delay.h ****     that compile-time constant expressions will be eliminated by
+  66:/usr/avr/include/util/delay.h ****     compiler optimization so floating-point expressions can be used
+  67:/usr/avr/include/util/delay.h ****     to calculate the number of delay cycles needed based on the CPU
+  68:/usr/avr/include/util/delay.h ****     frequency passed by the macro F_CPU.
+  69:/usr/avr/include/util/delay.h **** 
+  70:/usr/avr/include/util/delay.h ****     \note In order for these functions to work as intended, compiler
+  71:/usr/avr/include/util/delay.h ****     optimizations <em>must</em> be enabled, and the delay time
+  72:/usr/avr/include/util/delay.h ****     <em>must</em> be an expression that is a known constant at
+  73:/usr/avr/include/util/delay.h ****     compile-time.  If these requirements are not met, the resulting
+  74:/usr/avr/include/util/delay.h ****     delay will be much longer (and basically unpredictable), and
+  75:/usr/avr/include/util/delay.h ****     applications that otherwise do not use floating-point calculations
+  76:/usr/avr/include/util/delay.h ****     will experience severe code bloat by the floating-point library
+  77:/usr/avr/include/util/delay.h ****     routines linked into the application.
+  78:/usr/avr/include/util/delay.h **** 
+  79:/usr/avr/include/util/delay.h ****     The functions available allow the specification of microsecond, and
+  80:/usr/avr/include/util/delay.h ****     millisecond delays directly, using the application-supplied macro
+  81:/usr/avr/include/util/delay.h ****     F_CPU as the CPU clock frequency (in Hertz).
+  82:/usr/avr/include/util/delay.h **** 
+  83:/usr/avr/include/util/delay.h **** */
+  84:/usr/avr/include/util/delay.h **** 
+  85:/usr/avr/include/util/delay.h **** #if !defined(__DOXYGEN__)
+  86:/usr/avr/include/util/delay.h **** static __inline__ void _delay_us(double __us) __attribute__((__always_inline__));
+  87:/usr/avr/include/util/delay.h **** static __inline__ void _delay_ms(double __ms) __attribute__((__always_inline__));
+  88:/usr/avr/include/util/delay.h **** #endif
+  89:/usr/avr/include/util/delay.h **** 
+  90:/usr/avr/include/util/delay.h **** #ifndef F_CPU
+  91:/usr/avr/include/util/delay.h **** /* prevent compiler error by supplying a default */
+  92:/usr/avr/include/util/delay.h **** # warning "F_CPU not defined for <util/delay.h>"
+  93:/usr/avr/include/util/delay.h **** /** \ingroup util_delay
+  94:/usr/avr/include/util/delay.h ****     \def F_CPU
+  95:/usr/avr/include/util/delay.h ****     \brief CPU frequency in Hz
+  96:/usr/avr/include/util/delay.h **** 
+  97:/usr/avr/include/util/delay.h ****     The macro F_CPU specifies the CPU frequency to be considered by
+  98:/usr/avr/include/util/delay.h ****     the delay macros.  This macro is normally supplied by the
+  99:/usr/avr/include/util/delay.h ****     environment (e.g. from within a project header, or the project's
+ 100:/usr/avr/include/util/delay.h ****     Makefile).  The value 1 MHz here is only provided as a "vanilla"
+ 101:/usr/avr/include/util/delay.h ****     fallback if no such user-provided definition could be found.
+ 102:/usr/avr/include/util/delay.h **** 
+ 103:/usr/avr/include/util/delay.h ****     In terms of the delay functions, the CPU frequency can be given as
+ 104:/usr/avr/include/util/delay.h ****     a floating-point constant (e.g. 3.6864E6 for 3.6864 MHz).
+ 105:/usr/avr/include/util/delay.h ****     However, the macros in <util/setbaud.h> require it to be an
+ 106:/usr/avr/include/util/delay.h ****     integer value.
+ 107:/usr/avr/include/util/delay.h ****  */
+ 108:/usr/avr/include/util/delay.h **** # define F_CPU 1000000UL
+ 109:/usr/avr/include/util/delay.h **** #endif
+ 110:/usr/avr/include/util/delay.h **** 
+ 111:/usr/avr/include/util/delay.h **** #ifndef __OPTIMIZE__
+ 112:/usr/avr/include/util/delay.h **** # warning "Compiler optimizations disabled; functions from <util/delay.h> won't work as designed"
+ 113:/usr/avr/include/util/delay.h **** #endif
+ 114:/usr/avr/include/util/delay.h **** 
+ 115:/usr/avr/include/util/delay.h **** #if __HAS_DELAY_CYCLES && defined(__OPTIMIZE__) && \
+ 116:/usr/avr/include/util/delay.h ****   !defined(__DELAY_BACKWARD_COMPATIBLE__) &&	   \
+ 117:/usr/avr/include/util/delay.h ****   __STDC_HOSTED__
+ 118:/usr/avr/include/util/delay.h **** #  include <math.h>
+ 119:/usr/avr/include/util/delay.h **** #endif
+ 120:/usr/avr/include/util/delay.h **** 
+ 121:/usr/avr/include/util/delay.h **** /**
+ 122:/usr/avr/include/util/delay.h ****    \ingroup util_delay
+ 123:/usr/avr/include/util/delay.h **** 
+ 124:/usr/avr/include/util/delay.h ****    Perform a delay of \c __ms milliseconds, using _delay_loop_2().
+ 125:/usr/avr/include/util/delay.h **** 
+ 126:/usr/avr/include/util/delay.h ****    The macro F_CPU is supposed to be defined to a
+ 127:/usr/avr/include/util/delay.h ****    constant defining the CPU clock frequency (in Hertz).
+ 128:/usr/avr/include/util/delay.h **** 
+ 129:/usr/avr/include/util/delay.h ****    The maximal possible delay is 262.14 ms / F_CPU in MHz.
+ 130:/usr/avr/include/util/delay.h **** 
+ 131:/usr/avr/include/util/delay.h ****    When the user request delay which exceed the maximum possible one,
+ 132:/usr/avr/include/util/delay.h ****    _delay_ms() provides a decreased resolution functionality. In this
+ 133:/usr/avr/include/util/delay.h ****    mode _delay_ms() will work with a resolution of 1/10 ms, providing
+ 134:/usr/avr/include/util/delay.h ****    delays up to 6.5535 seconds (independent from CPU frequency).  The
+ 135:/usr/avr/include/util/delay.h ****    user will not be informed about decreased resolution.
+ 136:/usr/avr/include/util/delay.h **** 
+ 137:/usr/avr/include/util/delay.h ****    If the avr-gcc toolchain has __builtin_avr_delay_cycles()
+ 138:/usr/avr/include/util/delay.h ****    support, maximal possible delay is 4294967.295 ms/ F_CPU in MHz. For
+ 139:/usr/avr/include/util/delay.h ****    values greater than the maximal possible delay, overflows results in
+ 140:/usr/avr/include/util/delay.h ****    no delay i.e., 0ms.
+ 141:/usr/avr/include/util/delay.h **** 
+ 142:/usr/avr/include/util/delay.h ****    Conversion of \c __ms into clock cycles may not always result in
+ 143:/usr/avr/include/util/delay.h ****    integer.  By default, the clock cycles rounded up to next
+ 144:/usr/avr/include/util/delay.h ****    integer. This ensures that the user gets at least \c __ms
+ 145:/usr/avr/include/util/delay.h ****    microseconds of delay.
+ 146:/usr/avr/include/util/delay.h **** 
+ 147:/usr/avr/include/util/delay.h ****    Alternatively, by defining the macro \c __DELAY_ROUND_DOWN__, or
+ 148:/usr/avr/include/util/delay.h ****    \c __DELAY_ROUND_CLOSEST__, before including this header file, the
+ 149:/usr/avr/include/util/delay.h ****    algorithm can be made to round down, or round to closest integer,
+ 150:/usr/avr/include/util/delay.h ****    respectively.
+ 151:/usr/avr/include/util/delay.h **** 
+ 152:/usr/avr/include/util/delay.h ****    \note
+ 153:/usr/avr/include/util/delay.h **** 
+ 154:/usr/avr/include/util/delay.h ****    The implementation of _delay_ms() based on
+ 155:/usr/avr/include/util/delay.h ****    __builtin_avr_delay_cycles() is not backward compatible with older
+ 156:/usr/avr/include/util/delay.h ****    implementations.  In order to get functionality backward compatible
+ 157:/usr/avr/include/util/delay.h ****    with previous versions, the macro \c "__DELAY_BACKWARD_COMPATIBLE__"
+ 158:/usr/avr/include/util/delay.h ****    must be defined before including this header file. Also, the
+ 159:/usr/avr/include/util/delay.h ****    backward compatible algorithm will be chosen if the code is
+ 160:/usr/avr/include/util/delay.h ****    compiled in a <em>freestanding environment</em> (GCC option
+ 161:/usr/avr/include/util/delay.h ****    \c -ffreestanding), as the math functions required for rounding are
+ 162:/usr/avr/include/util/delay.h ****    not available to the compiler then.
+ 163:/usr/avr/include/util/delay.h **** 
+ 164:/usr/avr/include/util/delay.h ****  */
+ 165:/usr/avr/include/util/delay.h **** void
+ 166:/usr/avr/include/util/delay.h **** _delay_ms(double __ms)
+ 167:/usr/avr/include/util/delay.h **** {
+ 168:/usr/avr/include/util/delay.h **** 	double __tmp ;
+ 169:/usr/avr/include/util/delay.h **** #if __HAS_DELAY_CYCLES && defined(__OPTIMIZE__) && \
+ 170:/usr/avr/include/util/delay.h ****   !defined(__DELAY_BACKWARD_COMPATIBLE__) &&	   \
+ 171:/usr/avr/include/util/delay.h ****   __STDC_HOSTED__
+ 172:/usr/avr/include/util/delay.h **** 	uint32_t __ticks_dc;
+ 173:/usr/avr/include/util/delay.h **** 	extern void __builtin_avr_delay_cycles(unsigned long);
+ 174:/usr/avr/include/util/delay.h **** 	__tmp = ((F_CPU) / 1e3) * __ms;
+ 175:/usr/avr/include/util/delay.h **** 
+ 176:/usr/avr/include/util/delay.h **** 	#if defined(__DELAY_ROUND_DOWN__)
+ 177:/usr/avr/include/util/delay.h **** 		__ticks_dc = (uint32_t)fabs(__tmp);
+ 178:/usr/avr/include/util/delay.h **** 
+ 179:/usr/avr/include/util/delay.h **** 	#elif defined(__DELAY_ROUND_CLOSEST__)
+ 180:/usr/avr/include/util/delay.h **** 		__ticks_dc = (uint32_t)(fabs(__tmp)+0.5);
+ 181:/usr/avr/include/util/delay.h **** 
+ 182:/usr/avr/include/util/delay.h **** 	#else
+ 183:/usr/avr/include/util/delay.h **** 		//round up by default
+ 184:/usr/avr/include/util/delay.h **** 		__ticks_dc = (uint32_t)(ceil(fabs(__tmp)));
+ 185:/usr/avr/include/util/delay.h **** 	#endif
+ 186:/usr/avr/include/util/delay.h **** 
+ 187:/usr/avr/include/util/delay.h **** 	__builtin_avr_delay_cycles(__ticks_dc);
+ 188:/usr/avr/include/util/delay.h **** 
+ 189:/usr/avr/include/util/delay.h **** #else
+ 190:/usr/avr/include/util/delay.h **** 	uint16_t __ticks;
+ 191:/usr/avr/include/util/delay.h **** 	__tmp = ((F_CPU) / 4e3) * __ms;
+ 192:/usr/avr/include/util/delay.h **** 	if (__tmp < 1.0)
+ 193:/usr/avr/include/util/delay.h **** 		__ticks = 1;
+ 194:/usr/avr/include/util/delay.h **** 	else if (__tmp > 65535)
+ 195:/usr/avr/include/util/delay.h **** 	{
+ 196:/usr/avr/include/util/delay.h **** 		//	__ticks = requested delay in 1/10 ms
+ 197:/usr/avr/include/util/delay.h **** 		__ticks = (uint16_t) (__ms * 10.0);
+ 198:/usr/avr/include/util/delay.h **** 		while(__ticks)
+ 199:/usr/avr/include/util/delay.h **** 		{
+ 200:/usr/avr/include/util/delay.h **** 			// wait 1/10 ms
+ 201:/usr/avr/include/util/delay.h **** 			_delay_loop_2(((F_CPU) / 4e3) / 10);
+ 202:/usr/avr/include/util/delay.h **** 			__ticks --;
+ 203:/usr/avr/include/util/delay.h **** 		}
+ 204:/usr/avr/include/util/delay.h **** 		return;
+ 205:/usr/avr/include/util/delay.h **** 	}
+ 206:/usr/avr/include/util/delay.h **** 	else
+ 207:/usr/avr/include/util/delay.h **** 		__ticks = (uint16_t)__tmp;
+ 208:/usr/avr/include/util/delay.h **** 	_delay_loop_2(__ticks);
+ 209:/usr/avr/include/util/delay.h **** #endif
+ 210:/usr/avr/include/util/delay.h **** }
+ 211:/usr/avr/include/util/delay.h **** 
+ 212:/usr/avr/include/util/delay.h **** /**
+ 213:/usr/avr/include/util/delay.h ****    \ingroup util_delay
+ 214:/usr/avr/include/util/delay.h **** 
+ 215:/usr/avr/include/util/delay.h ****    Perform a delay of \c __us microseconds, using _delay_loop_1().
+ 216:/usr/avr/include/util/delay.h **** 
+ 217:/usr/avr/include/util/delay.h ****    The macro F_CPU is supposed to be defined to a
+ 218:/usr/avr/include/util/delay.h ****    constant defining the CPU clock frequency (in Hertz).
+ 219:/usr/avr/include/util/delay.h **** 
+ 220:/usr/avr/include/util/delay.h ****    The maximal possible delay is 768 us / F_CPU in MHz.
+ 221:/usr/avr/include/util/delay.h **** 
+ 222:/usr/avr/include/util/delay.h ****    If the user requests a delay greater than the maximal possible one,
+ 223:/usr/avr/include/util/delay.h ****    _delay_us() will automatically call _delay_ms() instead.  The user
+ 224:/usr/avr/include/util/delay.h ****    will not be informed about this case.
+ 225:/usr/avr/include/util/delay.h **** 
+ 226:/usr/avr/include/util/delay.h ****    If the avr-gcc toolchain has __builtin_avr_delay_cycles()
+ 227:/usr/avr/include/util/delay.h ****    support, maximal possible delay is 4294967.295 us/ F_CPU in MHz. For
+ 228:/usr/avr/include/util/delay.h ****    values greater than the maximal possible delay, overflow results in
+ 229:/usr/avr/include/util/delay.h ****    no delay i.e., 0us.
+ 230:/usr/avr/include/util/delay.h **** 
+ 231:/usr/avr/include/util/delay.h ****    Conversion of \c __us into clock cycles may not always result in
+ 232:/usr/avr/include/util/delay.h ****    integer.  By default, the clock cycles rounded up to next
+ 233:/usr/avr/include/util/delay.h ****    integer. This ensures that the user gets at least \c __us
+ 234:/usr/avr/include/util/delay.h ****    microseconds of delay.
+ 235:/usr/avr/include/util/delay.h **** 
+ 236:/usr/avr/include/util/delay.h ****    Alternatively, by defining the macro \c __DELAY_ROUND_DOWN__, or
+ 237:/usr/avr/include/util/delay.h ****    \c __DELAY_ROUND_CLOSEST__, before including this header file, the
+ 238:/usr/avr/include/util/delay.h ****    algorithm can be made to round down, or round to closest integer,
+ 239:/usr/avr/include/util/delay.h ****    respectively.
+ 240:/usr/avr/include/util/delay.h **** 
+ 241:/usr/avr/include/util/delay.h ****    \note
+ 242:/usr/avr/include/util/delay.h **** 
+ 243:/usr/avr/include/util/delay.h ****    The implementation of _delay_ms() based on
+ 244:/usr/avr/include/util/delay.h ****    __builtin_avr_delay_cycles() is not backward compatible with older
+ 245:/usr/avr/include/util/delay.h ****    implementations.  In order to get functionality backward compatible
+ 246:/usr/avr/include/util/delay.h ****    with previous versions, the macro \c __DELAY_BACKWARD_COMPATIBLE__
+ 247:/usr/avr/include/util/delay.h ****    must be defined before including this header file. Also, the
+ 248:/usr/avr/include/util/delay.h ****    backward compatible algorithm will be chosen if the code is
+ 249:/usr/avr/include/util/delay.h ****    compiled in a <em>freestanding environment</em> (GCC option
+ 250:/usr/avr/include/util/delay.h ****    \c -ffreestanding), as the math functions required for rounding are
+ 251:/usr/avr/include/util/delay.h ****    not available to the compiler then.
+ 252:/usr/avr/include/util/delay.h **** 
+ 253:/usr/avr/include/util/delay.h ****  */
+ 254:/usr/avr/include/util/delay.h **** void
+ 255:/usr/avr/include/util/delay.h **** _delay_us(double __us)
+ 385               		.loc 3 255 1 view .LVU68
+ 386               	.LBB45:
+ 256:/usr/avr/include/util/delay.h **** {
+ 257:/usr/avr/include/util/delay.h **** 	double __tmp ;
+ 387               		.loc 3 257 2 view .LVU69
+ 258:/usr/avr/include/util/delay.h **** #if __HAS_DELAY_CYCLES && defined(__OPTIMIZE__) && \
+ 259:/usr/avr/include/util/delay.h ****   !defined(__DELAY_BACKWARD_COMPATIBLE__) &&	   \
+ 260:/usr/avr/include/util/delay.h ****   __STDC_HOSTED__
+ 261:/usr/avr/include/util/delay.h **** 	uint32_t __ticks_dc;
+ 388               		.loc 3 261 2 view .LVU70
+ 262:/usr/avr/include/util/delay.h **** 	extern void __builtin_avr_delay_cycles(unsigned long);
+ 389               		.loc 3 262 2 view .LVU71
+ 263:/usr/avr/include/util/delay.h **** 	__tmp = ((F_CPU) / 1e6) * __us;
+ 390               		.loc 3 263 2 view .LVU72
+ 264:/usr/avr/include/util/delay.h **** 
+ 265:/usr/avr/include/util/delay.h **** 	#if defined(__DELAY_ROUND_DOWN__)
+ 266:/usr/avr/include/util/delay.h **** 		__ticks_dc = (uint32_t)fabs(__tmp);
+ 267:/usr/avr/include/util/delay.h **** 
+ 268:/usr/avr/include/util/delay.h **** 	#elif defined(__DELAY_ROUND_CLOSEST__)
+ 269:/usr/avr/include/util/delay.h **** 		__ticks_dc = (uint32_t)(fabs(__tmp)+0.5);
+ 270:/usr/avr/include/util/delay.h **** 
+ 271:/usr/avr/include/util/delay.h **** 	#else
+ 272:/usr/avr/include/util/delay.h **** 		//round up by default
+ 273:/usr/avr/include/util/delay.h **** 		__ticks_dc = (uint32_t)(ceil(fabs(__tmp)));
+ 391               		.loc 3 273 3 view .LVU73
+ 274:/usr/avr/include/util/delay.h **** 	#endif
+ 275:/usr/avr/include/util/delay.h **** 
+ 276:/usr/avr/include/util/delay.h **** 	__builtin_avr_delay_cycles(__ticks_dc);
+ 392               		.loc 3 276 2 view .LVU74
+ 393 00ac 45E3      		ldi r20,lo8(53)
+ 394 00ae 4A95      	1:	dec r20
+ 395 00b0 01F4      		brne 1b
+ 396 00b2 0000      		nop
+ 397               	.LVL26:
+ 398               		.loc 3 276 2 is_stmt 0 view .LVU75
+ 399               	.LBE45:
+ 400               	.LBE44:
+  62:quantum/split_common/transactions.c ****             }
+ 401               		.loc 1 62 17 is_stmt 1 view .LVU76
+  61:quantum/split_common/transactions.c ****                 wait_us(10);
+ 402               		.loc 1 61 46 view .LVU77
+ 403 00b4 0196      		adiw r24,1
+ 404               	.LVL27:
+  61:quantum/split_common/transactions.c ****                 wait_us(10);
+ 405               		.loc 1 61 31 view .LVU78
+ 406 00b6 2817      		cp r18,r24
+ 407 00b8 3907      		cpc r19,r25
+ 408 00ba 01F4      		brne .L11
+ 409 00bc 00C0      		rjmp .L10
+ 410               	.LBE43:
+ 411               	.LBE47:
+ 412               	.LBE49:
+ 413               		.cfi_endproc
+ 414               	.LFE27:
+ 416               		.section	.text.read_if_checksum_mismatch,"ax",@progbits
+ 418               	read_if_checksum_mismatch:
+ 419               	.LVL28:
+ 420               	.LFB28:
+  83:quantum/split_common/transactions.c ****     uint8_t curr_checksum;
+ 421               		.loc 1 83 180 view -0
+ 422               		.cfi_startproc
+  83:quantum/split_common/transactions.c ****     uint8_t curr_checksum;
+ 423               		.loc 1 83 180 is_stmt 0 view .LVU80
+ 424 0000 6F92      		push r6
+ 425               	.LCFI24:
+ 426               		.cfi_def_cfa_offset 3
+ 427               		.cfi_offset 6, -2
+ 428 0002 7F92      		push r7
+ 429               	.LCFI25:
+ 430               		.cfi_def_cfa_offset 4
+ 431               		.cfi_offset 7, -3
+ 432 0004 8F92      		push r8
+ 433               	.LCFI26:
+ 434               		.cfi_def_cfa_offset 5
+ 435               		.cfi_offset 8, -4
+ 436 0006 9F92      		push r9
+ 437               	.LCFI27:
+ 438               		.cfi_def_cfa_offset 6
+ 439               		.cfi_offset 9, -5
+ 440 0008 AF92      		push r10
+ 441               	.LCFI28:
+ 442               		.cfi_def_cfa_offset 7
+ 443               		.cfi_offset 10, -6
+ 444 000a BF92      		push r11
+ 445               	.LCFI29:
+ 446               		.cfi_def_cfa_offset 8
+ 447               		.cfi_offset 11, -7
+ 448 000c CF92      		push r12
+ 449               	.LCFI30:
+ 450               		.cfi_def_cfa_offset 9
+ 451               		.cfi_offset 12, -8
+ 452 000e DF92      		push r13
+ 453               	.LCFI31:
+ 454               		.cfi_def_cfa_offset 10
+ 455               		.cfi_offset 13, -9
+ 456 0010 EF92      		push r14
+ 457               	.LCFI32:
+ 458               		.cfi_def_cfa_offset 11
+ 459               		.cfi_offset 14, -10
+ 460 0012 FF92      		push r15
+ 461               	.LCFI33:
+ 462               		.cfi_def_cfa_offset 12
+ 463               		.cfi_offset 15, -11
+ 464 0014 0F93      		push r16
+ 465               	.LCFI34:
+ 466               		.cfi_def_cfa_offset 13
+ 467               		.cfi_offset 16, -12
+ 468 0016 1F93      		push r17
+ 469               	.LCFI35:
+ 470               		.cfi_def_cfa_offset 14
+ 471               		.cfi_offset 17, -13
+ 472 0018 CF93      		push r28
+ 473               	.LCFI36:
+ 474               		.cfi_def_cfa_offset 15
+ 475               		.cfi_offset 28, -14
+ 476 001a DF93      		push r29
+ 477               	.LCFI37:
+ 478               		.cfi_def_cfa_offset 16
+ 479               		.cfi_offset 29, -15
+ 480 001c 00D0      		rcall .
+ 481 001e 00D0      		rcall .
+ 482 0020 0F92      		push __tmp_reg__
+ 483               	.LCFI38:
+ 484               		.cfi_def_cfa_offset 21
+ 485 0022 CDB7      		in r28,__SP_L__
+ 486 0024 DEB7      		in r29,__SP_H__
+ 487               	.LCFI39:
+ 488               		.cfi_def_cfa_register 28
+ 489               	/* prologue: function */
+ 490               	/* frame size = 5 */
+ 491               	/* stack size = 19 */
+ 492               	.L__stack_usage = 19
+ 493 0026 662E      		mov r6,r22
+ 494 0028 5A01      		movw r10,r20
+ 495 002a 722E      		mov r7,r18
+ 496 002c 832E      		mov r8,r19
+ 497 002e 902E      		mov r9,r16
+ 498 0030 C12E      		mov r12,r17
+  84:quantum/split_common/transactions.c ****     bool    okay = transport_read(trans_id_checksum, &curr_checksum, sizeof(curr_checksum));
+ 499               		.loc 1 84 5 is_stmt 1 view .LVU81
+  85:quantum/split_common/transactions.c ****     if (okay && (timer_elapsed32(*last_update) >= FORCED_SYNC_THROTTLE_MS || curr_checksum != crc8(
+ 500               		.loc 1 85 5 view .LVU82
+  85:quantum/split_common/transactions.c ****     if (okay && (timer_elapsed32(*last_update) >= FORCED_SYNC_THROTTLE_MS || curr_checksum != crc8(
+ 501               		.loc 1 85 20 is_stmt 0 view .LVU83
+ 502 0032 01E0      		ldi r16,lo8(1)
+ 503 0034 10E0      		ldi r17,0
+ 504               	.LVL29:
+  85:quantum/split_common/transactions.c ****     if (okay && (timer_elapsed32(*last_update) >= FORCED_SYNC_THROTTLE_MS || curr_checksum != crc8(
+ 505               		.loc 1 85 20 view .LVU84
+ 506 0036 9E01      		movw r18,r28
+ 507               	.LVL30:
+  85:quantum/split_common/transactions.c ****     if (okay && (timer_elapsed32(*last_update) >= FORCED_SYNC_THROTTLE_MS || curr_checksum != crc8(
+ 508               		.loc 1 85 20 view .LVU85
+ 509 0038 2F5F      		subi r18,-1
+ 510 003a 3F4F      		sbci r19,-1
+ 511 003c 50E0      		ldi r21,0
+ 512 003e 40E0      		ldi r20,0
+ 513               	.LVL31:
+  85:quantum/split_common/transactions.c ****     if (okay && (timer_elapsed32(*last_update) >= FORCED_SYNC_THROTTLE_MS || curr_checksum != crc8(
+ 514               		.loc 1 85 20 view .LVU86
+ 515 0040 70E0      		ldi r23,0
+ 516 0042 60E0      		ldi r22,0
+ 517               	.LVL32:
+  85:quantum/split_common/transactions.c ****     if (okay && (timer_elapsed32(*last_update) >= FORCED_SYNC_THROTTLE_MS || curr_checksum != crc8(
+ 518               		.loc 1 85 20 view .LVU87
+ 519 0044 0E94 0000 		call transport_execute_transaction
+ 520               	.LVL33:
+  85:quantum/split_common/transactions.c ****     if (okay && (timer_elapsed32(*last_update) >= FORCED_SYNC_THROTTLE_MS || curr_checksum != crc8(
+ 521               		.loc 1 85 20 view .LVU88
+ 522 0048 D82E      		mov r13,r24
+ 523               	.LVL34:
+  86:quantum/split_common/transactions.c ****         okay &= transport_read(trans_id_retrieve, destination, length);
+ 524               		.loc 1 86 5 is_stmt 1 view .LVU89
+  86:quantum/split_common/transactions.c ****         okay &= transport_read(trans_id_retrieve, destination, length);
+ 525               		.loc 1 86 8 is_stmt 0 view .LVU90
+ 526 004a 8823      		tst r24
+ 527 004c 01F4      		brne .+2
+ 528 004e 00C0      		rjmp .L20
+  86:quantum/split_common/transactions.c ****         okay &= transport_read(trans_id_retrieve, destination, length);
+ 529               		.loc 1 86 18 discriminator 1 view .LVU91
+ 530 0050 D501      		movw r26,r10
+ 531 0052 8D91      		ld r24,X+
+ 532 0054 9D91      		ld r25,X+
+ 533 0056 0D90      		ld __tmp_reg__,X+
+ 534 0058 BC91      		ld r27,X
+ 535 005a A02D      		mov r26,__tmp_reg__
+ 536 005c BC01      		movw r22,r24
+ 537 005e CD01      		movw r24,r26
+ 538 0060 0E94 0000 		call timer_elapsed32
+ 539               	.LVL35:
+  86:quantum/split_common/transactions.c ****         okay &= transport_read(trans_id_retrieve, destination, length);
+ 540               		.loc 1 86 14 discriminator 1 view .LVU92
+ 541 0064 6436      		cpi r22,100
+ 542 0066 7105      		cpc r23,__zero_reg__
+ 543 0068 8105      		cpc r24,__zero_reg__
+ 544 006a 9105      		cpc r25,__zero_reg__
+ 545 006c 00F0      		brlo .L21
+ 546               	.L25:
+  87:quantum/split_common/transactions.c ****         okay &= curr_checksum == crc8(equiv_shmem, length);
+ 547               		.loc 1 87 9 is_stmt 1 view .LVU93
+  87:quantum/split_common/transactions.c ****         okay &= curr_checksum == crc8(equiv_shmem, length);
+ 548               		.loc 1 87 17 is_stmt 0 view .LVU94
+ 549 006e 8701      		movw r16,r14
+ 550 0070 272D      		mov r18,r7
+ 551 0072 382D      		mov r19,r8
+ 552 0074 50E0      		ldi r21,0
+ 553 0076 40E0      		ldi r20,0
+ 554 0078 70E0      		ldi r23,0
+ 555 007a 60E0      		ldi r22,0
+ 556 007c 862D      		mov r24,r6
+ 557 007e 0E94 0000 		call transport_execute_transaction
+ 558               	.LVL36:
+ 559 0082 D82E      		mov r13,r24
+ 560               	.LVL37:
+  88:quantum/split_common/transactions.c ****         if (okay) {
+ 561               		.loc 1 88 9 is_stmt 1 view .LVU95
+  88:quantum/split_common/transactions.c ****         if (okay) {
+ 562               		.loc 1 88 34 is_stmt 0 view .LVU96
+ 563 0084 B701      		movw r22,r14
+ 564 0086 892D      		mov r24,r9
+ 565 0088 9C2D      		mov r25,r12
+ 566 008a 0E94 0000 		call crc8
+ 567               	.LVL38:
+  88:quantum/split_common/transactions.c ****         if (okay) {
+ 568               		.loc 1 88 31 view .LVU97
+ 569 008e 91E0      		ldi r25,lo8(1)
+ 570 0090 2981      		ldd r18,Y+1
+ 571 0092 2813      		cpse r18,r24
+  88:quantum/split_common/transactions.c ****         if (okay) {
+ 572               		.loc 1 88 31 view .LVU98
+ 573 0094 90E0      		ldi r25,0
+ 574               	.L22:
+ 575 0096 D922      		and r13,r25
+ 576               	.LVL39:
+  89:quantum/split_common/transactions.c ****             *last_update = timer_read32();
+ 577               		.loc 1 89 9 is_stmt 1 view .LVU99
+  89:quantum/split_common/transactions.c ****             *last_update = timer_read32();
+ 578               		.loc 1 89 12 is_stmt 0 view .LVU100
+ 579 0098 01F0      		breq .L19
+ 580               	.LVL40:
+ 581               	.LBB52:
+ 582               	.LBI52:
+  83:quantum/split_common/transactions.c ****     uint8_t curr_checksum;
+ 583               		.loc 1 83 20 is_stmt 1 view .LVU101
+ 584               	.LBB53:
+  90:quantum/split_common/transactions.c ****         }
+ 585               		.loc 1 90 13 view .LVU102
+  90:quantum/split_common/transactions.c ****         }
+ 586               		.loc 1 90 28 is_stmt 0 view .LVU103
+ 587 009a 0E94 0000 		call timer_read32
+ 588               	.LVL41:
+ 589 009e F501      		movw r30,r10
+ 590 00a0 6083      		st Z,r22
+ 591 00a2 7183      		std Z+1,r23
+ 592 00a4 8283      		std Z+2,r24
+ 593 00a6 9383      		std Z+3,r25
+ 594               	.LVL42:
+  95:quantum/split_common/transactions.c **** }
+ 595               		.loc 1 95 5 is_stmt 1 view .LVU104
+ 596               	.L19:
+  95:quantum/split_common/transactions.c **** }
+ 597               		.loc 1 95 5 is_stmt 0 view .LVU105
+ 598               	.LBE53:
+ 599               	.LBE52:
+  96:quantum/split_common/transactions.c **** 
+ 600               		.loc 1 96 1 view .LVU106
+ 601 00a8 8D2D      		mov r24,r13
+ 602               	/* epilogue start */
+ 603 00aa 0F90      		pop __tmp_reg__
+ 604 00ac 0F90      		pop __tmp_reg__
+ 605 00ae 0F90      		pop __tmp_reg__
+ 606 00b0 0F90      		pop __tmp_reg__
+ 607 00b2 0F90      		pop __tmp_reg__
+ 608 00b4 DF91      		pop r29
+ 609 00b6 CF91      		pop r28
+ 610 00b8 1F91      		pop r17
+ 611 00ba 0F91      		pop r16
+ 612 00bc FF90      		pop r15
+ 613 00be EF90      		pop r14
+ 614               	.LVL43:
+  96:quantum/split_common/transactions.c **** 
+ 615               		.loc 1 96 1 view .LVU107
+ 616 00c0 DF90      		pop r13
+ 617               	.LVL44:
+  96:quantum/split_common/transactions.c **** 
+ 618               		.loc 1 96 1 view .LVU108
+ 619 00c2 CF90      		pop r12
+ 620 00c4 BF90      		pop r11
+ 621 00c6 AF90      		pop r10
+ 622               	.LVL45:
+  96:quantum/split_common/transactions.c **** 
+ 623               		.loc 1 96 1 view .LVU109
+ 624 00c8 9F90      		pop r9
+ 625 00ca 8F90      		pop r8
+ 626 00cc 7F90      		pop r7
+ 627 00ce 6F90      		pop r6
+ 628               	.LVL46:
+  96:quantum/split_common/transactions.c **** 
+ 629               		.loc 1 96 1 view .LVU110
+ 630 00d0 0895      		ret
+ 631               	.LVL47:
+ 632               	.L21:
+  86:quantum/split_common/transactions.c ****         okay &= transport_read(trans_id_retrieve, destination, length);
+ 633               		.loc 1 86 95 discriminator 2 view .LVU111
+ 634 00d2 B701      		movw r22,r14
+ 635 00d4 892D      		mov r24,r9
+ 636 00d6 9C2D      		mov r25,r12
+ 637 00d8 0E94 0000 		call crc8
+ 638               	.LVL48:
+  86:quantum/split_common/transactions.c ****         okay &= transport_read(trans_id_retrieve, destination, length);
+ 639               		.loc 1 86 75 discriminator 2 view .LVU112
+ 640 00dc 9981      		ldd r25,Y+1
+ 641 00de 8913      		cpse r24,r25
+ 642 00e0 00C0      		rjmp .L25
+ 643               	.L20:
+  93:quantum/split_common/transactions.c ****     }
+ 644               		.loc 1 93 9 is_stmt 1 view .LVU113
+ 645 00e2 A701      		movw r20,r14
+ 646 00e4 692D      		mov r22,r9
+ 647 00e6 7C2D      		mov r23,r12
+ 648 00e8 872D      		mov r24,r7
+ 649 00ea 982D      		mov r25,r8
+ 650 00ec 0E94 0000 		call memcpy
+ 651               	.LVL49:
+  95:quantum/split_common/transactions.c **** }
+ 652               		.loc 1 95 5 view .LVU114
+  95:quantum/split_common/transactions.c **** }
+ 653               		.loc 1 95 12 is_stmt 0 view .LVU115
+ 654 00f0 00C0      		rjmp .L19
+ 655               		.cfi_endproc
+ 656               	.LFE28:
+ 658               		.section	.text.encoder_handlers_master,"ax",@progbits
+ 660               	encoder_handlers_master:
+ 661               	.LVL50:
+ 662               	.LFB33:
+ 177:quantum/split_common/transactions.c ****     static uint32_t last_update = 0;
+ 663               		.loc 1 177 96 is_stmt 1 view -0
+ 664               		.cfi_startproc
+ 177:quantum/split_common/transactions.c ****     static uint32_t last_update = 0;
+ 665               		.loc 1 177 96 is_stmt 0 view .LVU117
+ 666 0000 EF92      		push r14
+ 667               	.LCFI40:
+ 668               		.cfi_def_cfa_offset 3
+ 669               		.cfi_offset 14, -2
+ 670 0002 FF92      		push r15
+ 671               	.LCFI41:
+ 672               		.cfi_def_cfa_offset 4
+ 673               		.cfi_offset 15, -3
+ 674 0004 0F93      		push r16
+ 675               	.LCFI42:
+ 676               		.cfi_def_cfa_offset 5
+ 677               		.cfi_offset 16, -4
+ 678 0006 1F93      		push r17
+ 679               	.LCFI43:
+ 680               		.cfi_def_cfa_offset 6
+ 681               		.cfi_offset 17, -5
+ 682 0008 CF93      		push r28
+ 683               	.LCFI44:
+ 684               		.cfi_def_cfa_offset 7
+ 685               		.cfi_offset 28, -6
+ 686 000a DF93      		push r29
+ 687               	.LCFI45:
+ 688               		.cfi_def_cfa_offset 8
+ 689               		.cfi_offset 29, -7
+ 690 000c 0F92      		push __tmp_reg__
+ 691               	.LCFI46:
+ 692               		.cfi_def_cfa_offset 9
+ 693 000e CDB7      		in r28,__SP_L__
+ 694 0010 DEB7      		in r29,__SP_H__
+ 695               	.LCFI47:
+ 696               		.cfi_def_cfa_register 28
+ 697               	/* prologue: function */
+ 698               	/* frame size = 1 */
+ 699               	/* stack size = 7 */
+ 700               	.L__stack_usage = 7
+ 178:quantum/split_common/transactions.c ****     uint8_t         temp_state[NUMBER_OF_ENCODERS];
+ 701               		.loc 1 178 5 is_stmt 1 view .LVU118
+ 179:quantum/split_common/transactions.c **** 
+ 702               		.loc 1 179 5 view .LVU119
+ 181:quantum/split_common/transactions.c ****     if (okay) encoder_update_raw(temp_state);
+ 703               		.loc 1 181 5 view .LVU120
+ 181:quantum/split_common/transactions.c ****     if (okay) encoder_update_raw(temp_state);
+ 704               		.loc 1 181 132 is_stmt 0 view .LVU121
+ 705 0012 0091 0000 		lds r16,split_shmem
+ 706 0016 1091 0000 		lds r17,split_shmem+1
+ 707 001a 095F      		subi r16,-7
+ 708 001c 1F4F      		sbci r17,-1
+ 181:quantum/split_common/transactions.c ****     if (okay) encoder_update_raw(temp_state);
+ 709               		.loc 1 181 17 view .LVU122
+ 710 001e EE24      		clr r14
+ 711 0020 E394      		inc r14
+ 712 0022 F12C      		mov r15,__zero_reg__
+ 713               	.LVL51:
+ 181:quantum/split_common/transactions.c ****     if (okay) encoder_update_raw(temp_state);
+ 714               		.loc 1 181 17 view .LVU123
+ 715 0024 9E01      		movw r18,r28
+ 716 0026 2F5F      		subi r18,-1
+ 717 0028 3F4F      		sbci r19,-1
+ 718 002a 40E0      		ldi r20,lo8(last_update.4)
+ 719 002c 50E0      		ldi r21,hi8(last_update.4)
+ 720 002e 63E0      		ldi r22,lo8(3)
+ 721               	.LVL52:
+ 181:quantum/split_common/transactions.c ****     if (okay) encoder_update_raw(temp_state);
+ 722               		.loc 1 181 17 view .LVU124
+ 723 0030 82E0      		ldi r24,lo8(2)
+ 724 0032 0E94 0000 		call read_if_checksum_mismatch
+ 725               	.LVL53:
+ 726 0036 182F      		mov r17,r24
+ 727               	.LVL54:
+ 182:quantum/split_common/transactions.c ****     return okay;
+ 728               		.loc 1 182 5 is_stmt 1 view .LVU125
+ 182:quantum/split_common/transactions.c ****     return okay;
+ 729               		.loc 1 182 8 is_stmt 0 view .LVU126
+ 730 0038 8823      		tst r24
+ 731 003a 01F0      		breq .L29
+ 182:quantum/split_common/transactions.c ****     return okay;
+ 732               		.loc 1 182 15 is_stmt 1 discriminator 1 view .LVU127
+ 733 003c CE01      		movw r24,r28
+ 734 003e 0196      		adiw r24,1
+ 735 0040 0E94 0000 		call encoder_update_raw
+ 736               	.LVL55:
+ 183:quantum/split_common/transactions.c **** }
+ 737               		.loc 1 183 5 discriminator 1 view .LVU128
+ 738               	.L29:
+ 184:quantum/split_common/transactions.c **** 
+ 739               		.loc 1 184 1 is_stmt 0 view .LVU129
+ 740 0044 812F      		mov r24,r17
+ 741               	/* epilogue start */
+ 742 0046 0F90      		pop __tmp_reg__
+ 743 0048 DF91      		pop r29
+ 744 004a CF91      		pop r28
+ 745 004c 1F91      		pop r17
+ 746               	.LVL56:
+ 184:quantum/split_common/transactions.c **** 
+ 747               		.loc 1 184 1 view .LVU130
+ 748 004e 0F91      		pop r16
+ 749 0050 FF90      		pop r15
+ 750 0052 EF90      		pop r14
+ 751 0054 0895      		ret
+ 752               		.cfi_endproc
+ 753               	.LFE33:
+ 755               		.section	.text.slave_matrix_handlers_master,"ax",@progbits
+ 757               	slave_matrix_handlers_master:
+ 758               	.LVL57:
+ 759               	.LFB31:
+ 117:quantum/split_common/transactions.c ****     static uint32_t     last_update                    = 0;
+ 760               		.loc 1 117 101 is_stmt 1 view -0
+ 761               		.cfi_startproc
+ 117:quantum/split_common/transactions.c ****     static uint32_t     last_update                    = 0;
+ 762               		.loc 1 117 101 is_stmt 0 view .LVU132
+ 763 0000 CF92      		push r12
+ 764               	.LCFI48:
+ 765               		.cfi_def_cfa_offset 3
+ 766               		.cfi_offset 12, -2
+ 767 0002 DF92      		push r13
+ 768               	.LCFI49:
+ 769               		.cfi_def_cfa_offset 4
+ 770               		.cfi_offset 13, -3
+ 771 0004 EF92      		push r14
+ 772               	.LCFI50:
+ 773               		.cfi_def_cfa_offset 5
+ 774               		.cfi_offset 14, -4
+ 775 0006 FF92      		push r15
+ 776               	.LCFI51:
+ 777               		.cfi_def_cfa_offset 6
+ 778               		.cfi_offset 15, -5
+ 779 0008 0F93      		push r16
+ 780               	.LCFI52:
+ 781               		.cfi_def_cfa_offset 7
+ 782               		.cfi_offset 16, -6
+ 783 000a 1F93      		push r17
+ 784               	.LCFI53:
+ 785               		.cfi_def_cfa_offset 8
+ 786               		.cfi_offset 17, -7
+ 787 000c CF93      		push r28
+ 788               	.LCFI54:
+ 789               		.cfi_def_cfa_offset 9
+ 790               		.cfi_offset 28, -8
+ 791 000e DF93      		push r29
+ 792               	.LCFI55:
+ 793               		.cfi_def_cfa_offset 10
+ 794               		.cfi_offset 29, -9
+ 795 0010 00D0      		rcall .
+ 796 0012 00D0      		rcall .
+ 797 0014 0F92      		push __tmp_reg__
+ 798               	.LCFI56:
+ 799               		.cfi_def_cfa_offset 15
+ 800 0016 CDB7      		in r28,__SP_L__
+ 801 0018 DEB7      		in r29,__SP_H__
+ 802               	.LCFI57:
+ 803               		.cfi_def_cfa_register 28
+ 804               	/* prologue: function */
+ 805               	/* frame size = 5 */
+ 806               	/* stack size = 13 */
+ 807               	.L__stack_usage = 13
+ 808 001a 6B01      		movw r12,r22
+ 118:quantum/split_common/transactions.c ****     static matrix_row_t last_matrix[(MATRIX_ROWS) / 2] = {0};  // last successfully-read matrix, so
+ 809               		.loc 1 118 5 is_stmt 1 view .LVU133
+ 119:quantum/split_common/transactions.c ****     matrix_row_t        temp_matrix[(MATRIX_ROWS) / 2];        // holding area while we test whethe
+ 810               		.loc 1 119 5 view .LVU134
+ 120:quantum/split_common/transactions.c **** 
+ 811               		.loc 1 120 5 view .LVU135
+ 122:quantum/split_common/transactions.c ****     if (okay) {
+ 812               		.loc 1 122 5 view .LVU136
+ 122:quantum/split_common/transactions.c ****     if (okay) {
+ 813               		.loc 1 122 140 is_stmt 0 view .LVU137
+ 814 001c 0091 0000 		lds r16,split_shmem
+ 815 0020 1091 0000 		lds r17,split_shmem+1
+ 816 0024 0F5F      		subi r16,-1
+ 817 0026 1F4F      		sbci r17,-1
+ 122:quantum/split_common/transactions.c ****     if (okay) {
+ 818               		.loc 1 122 17 view .LVU138
+ 819 0028 85E0      		ldi r24,lo8(5)
+ 820 002a E82E      		mov r14,r24
+ 821 002c F12C      		mov r15,__zero_reg__
+ 822               	.LVL58:
+ 122:quantum/split_common/transactions.c ****     if (okay) {
+ 823               		.loc 1 122 17 view .LVU139
+ 824 002e 9E01      		movw r18,r28
+ 825 0030 2F5F      		subi r18,-1
+ 826 0032 3F4F      		sbci r19,-1
+ 827 0034 40E0      		ldi r20,lo8(last_update.3)
+ 828 0036 50E0      		ldi r21,hi8(last_update.3)
+ 829 0038 61E0      		ldi r22,lo8(1)
+ 830               	.LVL59:
+ 122:quantum/split_common/transactions.c ****     if (okay) {
+ 831               		.loc 1 122 17 view .LVU140
+ 832 003a 80E0      		ldi r24,0
+ 833 003c 0E94 0000 		call read_if_checksum_mismatch
+ 834               	.LVL60:
+ 123:quantum/split_common/transactions.c ****         // Checksum matches the received data, save as the last matrix state
+ 835               		.loc 1 123 5 is_stmt 1 view .LVU141
+ 123:quantum/split_common/transactions.c ****         // Checksum matches the received data, save as the last matrix state
+ 836               		.loc 1 123 8 is_stmt 0 view .LVU142
+ 837 0040 8823      		tst r24
+ 838 0042 01F0      		breq .L35
+ 125:quantum/split_common/transactions.c ****     }
+ 839               		.loc 1 125 9 is_stmt 1 view .LVU143
+ 840 0044 95E0      		ldi r25,lo8(5)
+ 841 0046 FE01      		movw r30,r28
+ 842 0048 3196      		adiw r30,1
+ 843 004a A0E0      		ldi r26,lo8(last_matrix.2)
+ 844 004c B0E0      		ldi r27,hi8(last_matrix.2)
+ 845               		0:
+ 846 004e 0190      		ld r0,Z+
+ 847 0050 0D92      		st X+,r0
+ 848 0052 9A95      		dec r25
+ 849 0054 01F4      		brne 0b
+ 850               	.L35:
+ 128:quantum/split_common/transactions.c ****     return okay;
+ 851               		.loc 1 128 5 view .LVU144
+ 852 0056 95E0      		ldi r25,lo8(5)
+ 853 0058 E0E0      		ldi r30,lo8(last_matrix.2)
+ 854 005a F0E0      		ldi r31,hi8(last_matrix.2)
+ 855 005c D601      		movw r26,r12
+ 856               		0:
+ 857 005e 0190      		ld r0,Z+
+ 858 0060 0D92      		st X+,r0
+ 859 0062 9A95      		dec r25
+ 860 0064 01F4      		brne 0b
+ 129:quantum/split_common/transactions.c **** }
+ 861               		.loc 1 129 5 view .LVU145
+ 862               	/* epilogue start */
+ 130:quantum/split_common/transactions.c **** 
+ 863               		.loc 1 130 1 is_stmt 0 view .LVU146
+ 864 0066 0F90      		pop __tmp_reg__
+ 865 0068 0F90      		pop __tmp_reg__
+ 866 006a 0F90      		pop __tmp_reg__
+ 867 006c 0F90      		pop __tmp_reg__
+ 868 006e 0F90      		pop __tmp_reg__
+ 869 0070 DF91      		pop r29
+ 870 0072 CF91      		pop r28
+ 871 0074 1F91      		pop r17
+ 872 0076 0F91      		pop r16
+ 873 0078 FF90      		pop r15
+ 874 007a EF90      		pop r14
+ 875 007c DF90      		pop r13
+ 876 007e CF90      		pop r12
+ 877               	.LVL61:
+ 130:quantum/split_common/transactions.c **** 
+ 878               		.loc 1 130 1 view .LVU147
+ 879 0080 0895      		ret
+ 880               		.cfi_endproc
+ 881               	.LFE31:
+ 883               		.section	.rodata.transactions_master.str1.1,"aMS",@progbits,1
+ 884               	.LC0:
+ 885 0000 736C 6176 		.string	"slave_matrix"
+ 885      655F 6D61 
+ 885      7472 6978 
+ 885      00
+ 886               	.LC1:
+ 887 000d 656E 636F 		.string	"encoder"
+ 887      6465 7200 
+ 888               	.LC2:
+ 889 0015 7379 6E63 		.string	"sync_timer"
+ 889      5F74 696D 
+ 889      6572 00
+ 890               		.section	.text.transactions_master,"ax",@progbits
+ 891               	.global	transactions_master
+ 893               	transactions_master:
+ 894               	.LVL62:
+ 895               	.LFB37:
+ 229:quantum/split_common/transactions.c **** 
+ 230:quantum/split_common/transactions.c **** static void sync_timer_handlers_slave(matrix_row_t master_matrix[], matrix_row_t slave_matrix[]) {
+ 231:quantum/split_common/transactions.c ****     static uint32_t last_sync_timer = 0;
+ 232:quantum/split_common/transactions.c ****     if (last_sync_timer != split_shmem->sync_timer) {
+ 233:quantum/split_common/transactions.c ****         last_sync_timer = split_shmem->sync_timer;
+ 234:quantum/split_common/transactions.c ****         sync_timer_update(last_sync_timer);
+ 235:quantum/split_common/transactions.c ****     }
+ 236:quantum/split_common/transactions.c **** }
+ 237:quantum/split_common/transactions.c **** 
+ 238:quantum/split_common/transactions.c **** #    define TRANSACTIONS_SYNC_TIMER_MASTER()      TRANSACTION_HANDLER_MASTER(sync_timer)
+ 239:quantum/split_common/transactions.c **** #    define TRANSACTIONS_SYNC_TIMER_SLAVE()       TRANSACTION_HANDLER_SLAVE(sync_timer)
+ 240:quantum/split_common/transactions.c **** #    define TRANSACTIONS_SYNC_TIMER_REGISTRATIONS [PUT_SYNC_TIMER] = trans_initiator2target_initial
+ 241:quantum/split_common/transactions.c **** 
+ 242:quantum/split_common/transactions.c **** #else  // DISABLE_SYNC_TIMER
+ 243:quantum/split_common/transactions.c **** 
+ 244:quantum/split_common/transactions.c **** #    define TRANSACTIONS_SYNC_TIMER_MASTER()
+ 245:quantum/split_common/transactions.c **** #    define TRANSACTIONS_SYNC_TIMER_SLAVE()
+ 246:quantum/split_common/transactions.c **** #    define TRANSACTIONS_SYNC_TIMER_REGISTRATIONS
+ 247:quantum/split_common/transactions.c **** 
+ 248:quantum/split_common/transactions.c **** #endif  // DISABLE_SYNC_TIMER
+ 249:quantum/split_common/transactions.c **** 
+ 250:quantum/split_common/transactions.c **** ////////////////////////////////////////////////////
+ 251:quantum/split_common/transactions.c **** // Layer state
+ 252:quantum/split_common/transactions.c **** 
+ 253:quantum/split_common/transactions.c **** #if !defined(NO_ACTION_LAYER) && defined(SPLIT_LAYER_STATE_ENABLE)
+ 254:quantum/split_common/transactions.c **** 
+ 255:quantum/split_common/transactions.c **** static bool layer_state_handlers_master(matrix_row_t master_matrix[], matrix_row_t slave_matrix[]) 
+ 256:quantum/split_common/transactions.c ****     static uint32_t last_layer_state_update         = 0;
+ 257:quantum/split_common/transactions.c ****     static uint32_t last_default_layer_state_update = 0;
+ 258:quantum/split_common/transactions.c **** 
+ 259:quantum/split_common/transactions.c ****     bool okay = send_if_condition(PUT_LAYER_STATE, &last_layer_state_update, (layer_state != split_
+ 260:quantum/split_common/transactions.c ****     if (okay) {
+ 261:quantum/split_common/transactions.c ****         okay &= send_if_condition(PUT_DEFAULT_LAYER_STATE, &last_default_layer_state_update, (defau
+ 262:quantum/split_common/transactions.c ****     }
+ 263:quantum/split_common/transactions.c ****     return okay;
+ 264:quantum/split_common/transactions.c **** }
+ 265:quantum/split_common/transactions.c **** 
+ 266:quantum/split_common/transactions.c **** static void layer_state_handlers_slave(matrix_row_t master_matrix[], matrix_row_t slave_matrix[]) {
+ 267:quantum/split_common/transactions.c ****     layer_state         = split_shmem->layers.layer_state;
+ 268:quantum/split_common/transactions.c ****     default_layer_state = split_shmem->layers.default_layer_state;
+ 269:quantum/split_common/transactions.c **** }
+ 270:quantum/split_common/transactions.c **** 
+ 271:quantum/split_common/transactions.c **** // clang-format off
+ 272:quantum/split_common/transactions.c **** #    define TRANSACTIONS_LAYER_STATE_MASTER() TRANSACTION_HANDLER_MASTER(layer_state)
+ 273:quantum/split_common/transactions.c **** #    define TRANSACTIONS_LAYER_STATE_SLAVE() TRANSACTION_HANDLER_SLAVE(layer_state)
+ 274:quantum/split_common/transactions.c **** #    define TRANSACTIONS_LAYER_STATE_REGISTRATIONS \
+ 275:quantum/split_common/transactions.c ****     [PUT_LAYER_STATE]         = trans_initiator2target_initializer(layers.layer_state), \
+ 276:quantum/split_common/transactions.c ****     [PUT_DEFAULT_LAYER_STATE] = trans_initiator2target_initializer(layers.default_layer_state),
+ 277:quantum/split_common/transactions.c **** // clang-format on
+ 278:quantum/split_common/transactions.c **** 
+ 279:quantum/split_common/transactions.c **** #else  // !defined(NO_ACTION_LAYER) && defined(SPLIT_LAYER_STATE_ENABLE)
+ 280:quantum/split_common/transactions.c **** 
+ 281:quantum/split_common/transactions.c **** #    define TRANSACTIONS_LAYER_STATE_MASTER()
+ 282:quantum/split_common/transactions.c **** #    define TRANSACTIONS_LAYER_STATE_SLAVE()
+ 283:quantum/split_common/transactions.c **** #    define TRANSACTIONS_LAYER_STATE_REGISTRATIONS
+ 284:quantum/split_common/transactions.c **** 
+ 285:quantum/split_common/transactions.c **** #endif  // !defined(NO_ACTION_LAYER) && defined(SPLIT_LAYER_STATE_ENABLE)
+ 286:quantum/split_common/transactions.c **** 
+ 287:quantum/split_common/transactions.c **** ////////////////////////////////////////////////////
+ 288:quantum/split_common/transactions.c **** // LED state
+ 289:quantum/split_common/transactions.c **** 
+ 290:quantum/split_common/transactions.c **** #ifdef SPLIT_LED_STATE_ENABLE
+ 291:quantum/split_common/transactions.c **** 
+ 292:quantum/split_common/transactions.c **** static bool led_state_handlers_master(matrix_row_t master_matrix[], matrix_row_t slave_matrix[]) {
+ 293:quantum/split_common/transactions.c ****     static uint32_t last_update = 0;
+ 294:quantum/split_common/transactions.c ****     uint8_t         led_state   = host_keyboard_leds();
+ 295:quantum/split_common/transactions.c ****     return send_if_data_mismatch(PUT_LED_STATE, &last_update, &led_state, &split_shmem->led_state, 
+ 296:quantum/split_common/transactions.c **** }
+ 297:quantum/split_common/transactions.c **** 
+ 298:quantum/split_common/transactions.c **** static void led_state_handlers_slave(matrix_row_t master_matrix[], matrix_row_t slave_matrix[]) {
+ 299:quantum/split_common/transactions.c ****     void set_split_host_keyboard_leds(uint8_t led_state);
+ 300:quantum/split_common/transactions.c ****     set_split_host_keyboard_leds(split_shmem->led_state);
+ 301:quantum/split_common/transactions.c **** }
+ 302:quantum/split_common/transactions.c **** 
+ 303:quantum/split_common/transactions.c **** #    define TRANSACTIONS_LED_STATE_MASTER()      TRANSACTION_HANDLER_MASTER(led_state)
+ 304:quantum/split_common/transactions.c **** #    define TRANSACTIONS_LED_STATE_SLAVE()       TRANSACTION_HANDLER_SLAVE(led_state)
+ 305:quantum/split_common/transactions.c **** #    define TRANSACTIONS_LED_STATE_REGISTRATIONS [PUT_LED_STATE] = trans_initiator2target_initializ
+ 306:quantum/split_common/transactions.c **** 
+ 307:quantum/split_common/transactions.c **** #else  // SPLIT_LED_STATE_ENABLE
+ 308:quantum/split_common/transactions.c **** 
+ 309:quantum/split_common/transactions.c **** #    define TRANSACTIONS_LED_STATE_MASTER()
+ 310:quantum/split_common/transactions.c **** #    define TRANSACTIONS_LED_STATE_SLAVE()
+ 311:quantum/split_common/transactions.c **** #    define TRANSACTIONS_LED_STATE_REGISTRATIONS
+ 312:quantum/split_common/transactions.c **** 
+ 313:quantum/split_common/transactions.c **** #endif  // SPLIT_LED_STATE_ENABLE
+ 314:quantum/split_common/transactions.c **** 
+ 315:quantum/split_common/transactions.c **** ////////////////////////////////////////////////////
+ 316:quantum/split_common/transactions.c **** // Mods
+ 317:quantum/split_common/transactions.c **** 
+ 318:quantum/split_common/transactions.c **** #ifdef SPLIT_MODS_ENABLE
+ 319:quantum/split_common/transactions.c **** 
+ 320:quantum/split_common/transactions.c **** static bool mods_handlers_master(matrix_row_t master_matrix[], matrix_row_t slave_matrix[]) {
+ 321:quantum/split_common/transactions.c ****     static uint32_t   last_update    = 0;
+ 322:quantum/split_common/transactions.c ****     bool              mods_need_sync = timer_elapsed32(last_update) >= FORCED_SYNC_THROTTLE_MS;
+ 323:quantum/split_common/transactions.c ****     split_mods_sync_t new_mods;
+ 324:quantum/split_common/transactions.c ****     new_mods.real_mods = get_mods();
+ 325:quantum/split_common/transactions.c ****     if (!mods_need_sync && new_mods.real_mods != split_shmem->mods.real_mods) {
+ 326:quantum/split_common/transactions.c ****         mods_need_sync = true;
+ 327:quantum/split_common/transactions.c ****     }
+ 328:quantum/split_common/transactions.c **** 
+ 329:quantum/split_common/transactions.c ****     new_mods.weak_mods = get_weak_mods();
+ 330:quantum/split_common/transactions.c ****     if (!mods_need_sync && new_mods.weak_mods != split_shmem->mods.weak_mods) {
+ 331:quantum/split_common/transactions.c ****         mods_need_sync = true;
+ 332:quantum/split_common/transactions.c ****     }
+ 333:quantum/split_common/transactions.c **** 
+ 334:quantum/split_common/transactions.c **** #    ifndef NO_ACTION_ONESHOT
+ 335:quantum/split_common/transactions.c ****     new_mods.oneshot_mods = get_oneshot_mods();
+ 336:quantum/split_common/transactions.c ****     if (!mods_need_sync && new_mods.oneshot_mods != split_shmem->mods.oneshot_mods) {
+ 337:quantum/split_common/transactions.c ****         mods_need_sync = true;
+ 338:quantum/split_common/transactions.c ****     }
+ 339:quantum/split_common/transactions.c **** #    endif  // NO_ACTION_ONESHOT
+ 340:quantum/split_common/transactions.c **** 
+ 341:quantum/split_common/transactions.c ****     bool okay = true;
+ 342:quantum/split_common/transactions.c ****     if (mods_need_sync) {
+ 343:quantum/split_common/transactions.c ****         okay &= transport_write(PUT_MODS, &new_mods, sizeof(new_mods));
+ 344:quantum/split_common/transactions.c ****         if (okay) {
+ 345:quantum/split_common/transactions.c ****             last_update = timer_read32();
+ 346:quantum/split_common/transactions.c ****         }
+ 347:quantum/split_common/transactions.c ****     }
+ 348:quantum/split_common/transactions.c **** 
+ 349:quantum/split_common/transactions.c ****     return okay;
+ 350:quantum/split_common/transactions.c **** }
+ 351:quantum/split_common/transactions.c **** 
+ 352:quantum/split_common/transactions.c **** static void mods_handlers_slave(matrix_row_t master_matrix[], matrix_row_t slave_matrix[]) {
+ 353:quantum/split_common/transactions.c ****     set_mods(split_shmem->mods.real_mods);
+ 354:quantum/split_common/transactions.c ****     set_weak_mods(split_shmem->mods.weak_mods);
+ 355:quantum/split_common/transactions.c **** #    ifndef NO_ACTION_ONESHOT
+ 356:quantum/split_common/transactions.c ****     set_oneshot_mods(split_shmem->mods.oneshot_mods);
+ 357:quantum/split_common/transactions.c **** #    endif
+ 358:quantum/split_common/transactions.c **** }
+ 359:quantum/split_common/transactions.c **** 
+ 360:quantum/split_common/transactions.c **** #    define TRANSACTIONS_MODS_MASTER()      TRANSACTION_HANDLER_MASTER(mods)
+ 361:quantum/split_common/transactions.c **** #    define TRANSACTIONS_MODS_SLAVE()       TRANSACTION_HANDLER_SLAVE(mods)
+ 362:quantum/split_common/transactions.c **** #    define TRANSACTIONS_MODS_REGISTRATIONS [PUT_MODS] = trans_initiator2target_initializer(mods),
+ 363:quantum/split_common/transactions.c **** 
+ 364:quantum/split_common/transactions.c **** #else  // SPLIT_MODS_ENABLE
+ 365:quantum/split_common/transactions.c **** 
+ 366:quantum/split_common/transactions.c **** #    define TRANSACTIONS_MODS_MASTER()
+ 367:quantum/split_common/transactions.c **** #    define TRANSACTIONS_MODS_SLAVE()
+ 368:quantum/split_common/transactions.c **** #    define TRANSACTIONS_MODS_REGISTRATIONS
+ 369:quantum/split_common/transactions.c **** 
+ 370:quantum/split_common/transactions.c **** #endif  // SPLIT_MODS_ENABLE
+ 371:quantum/split_common/transactions.c **** 
+ 372:quantum/split_common/transactions.c **** ////////////////////////////////////////////////////
+ 373:quantum/split_common/transactions.c **** // Backlight
+ 374:quantum/split_common/transactions.c **** 
+ 375:quantum/split_common/transactions.c **** #ifdef BACKLIGHT_ENABLE
+ 376:quantum/split_common/transactions.c **** 
+ 377:quantum/split_common/transactions.c **** static bool backlight_handlers_master(matrix_row_t master_matrix[], matrix_row_t slave_matrix[]) {
+ 378:quantum/split_common/transactions.c ****     static uint32_t last_update = 0;
+ 379:quantum/split_common/transactions.c ****     uint8_t         level       = is_backlight_enabled() ? get_backlight_level() : 0;
+ 380:quantum/split_common/transactions.c ****     return send_if_condition(PUT_BACKLIGHT, &last_update, (level != split_shmem->backlight_level), 
+ 381:quantum/split_common/transactions.c **** }
+ 382:quantum/split_common/transactions.c **** 
+ 383:quantum/split_common/transactions.c **** static void backlight_handlers_slave(matrix_row_t master_matrix[], matrix_row_t slave_matrix[]) { b
+ 384:quantum/split_common/transactions.c **** 
+ 385:quantum/split_common/transactions.c **** #    define TRANSACTIONS_BACKLIGHT_MASTER()      TRANSACTION_HANDLER_MASTER(backlight)
+ 386:quantum/split_common/transactions.c **** #    define TRANSACTIONS_BACKLIGHT_SLAVE()       TRANSACTION_HANDLER_SLAVE(backlight)
+ 387:quantum/split_common/transactions.c **** #    define TRANSACTIONS_BACKLIGHT_REGISTRATIONS [PUT_BACKLIGHT] = trans_initiator2target_initializ
+ 388:quantum/split_common/transactions.c **** 
+ 389:quantum/split_common/transactions.c **** #else  // BACKLIGHT_ENABLE
+ 390:quantum/split_common/transactions.c **** 
+ 391:quantum/split_common/transactions.c **** #    define TRANSACTIONS_BACKLIGHT_MASTER()
+ 392:quantum/split_common/transactions.c **** #    define TRANSACTIONS_BACKLIGHT_SLAVE()
+ 393:quantum/split_common/transactions.c **** #    define TRANSACTIONS_BACKLIGHT_REGISTRATIONS
+ 394:quantum/split_common/transactions.c **** 
+ 395:quantum/split_common/transactions.c **** #endif  // BACKLIGHT_ENABLE
+ 396:quantum/split_common/transactions.c **** 
+ 397:quantum/split_common/transactions.c **** ////////////////////////////////////////////////////
+ 398:quantum/split_common/transactions.c **** // RGBLIGHT
+ 399:quantum/split_common/transactions.c **** 
+ 400:quantum/split_common/transactions.c **** #if defined(RGBLIGHT_ENABLE) && defined(RGBLIGHT_SPLIT)
+ 401:quantum/split_common/transactions.c **** 
+ 402:quantum/split_common/transactions.c **** static bool rgblight_handlers_master(matrix_row_t master_matrix[], matrix_row_t slave_matrix[]) {
+ 403:quantum/split_common/transactions.c ****     static uint32_t     last_update = 0;
+ 404:quantum/split_common/transactions.c ****     rgblight_syncinfo_t rgblight_sync;
+ 405:quantum/split_common/transactions.c ****     rgblight_get_syncinfo(&rgblight_sync);
+ 406:quantum/split_common/transactions.c ****     if (send_if_condition(PUT_RGBLIGHT, &last_update, (rgblight_sync.status.change_flags != 0), &rg
+ 407:quantum/split_common/transactions.c ****         rgblight_clear_change_flags();
+ 408:quantum/split_common/transactions.c ****     } else {
+ 409:quantum/split_common/transactions.c ****         return false;
+ 410:quantum/split_common/transactions.c ****     }
+ 411:quantum/split_common/transactions.c ****     return true;
+ 412:quantum/split_common/transactions.c **** }
+ 413:quantum/split_common/transactions.c **** 
+ 414:quantum/split_common/transactions.c **** static void rgblight_handlers_slave(matrix_row_t master_matrix[], matrix_row_t slave_matrix[]) {
+ 415:quantum/split_common/transactions.c ****     // Update the RGB with the new data
+ 416:quantum/split_common/transactions.c ****     if (split_shmem->rgblight_sync.status.change_flags != 0) {
+ 417:quantum/split_common/transactions.c ****         rgblight_update_sync(&split_shmem->rgblight_sync, false);
+ 418:quantum/split_common/transactions.c ****         split_shmem->rgblight_sync.status.change_flags = 0;
+ 419:quantum/split_common/transactions.c ****     }
+ 420:quantum/split_common/transactions.c **** }
+ 421:quantum/split_common/transactions.c **** 
+ 422:quantum/split_common/transactions.c **** #    define TRANSACTIONS_RGBLIGHT_MASTER()      TRANSACTION_HANDLER_MASTER(rgblight)
+ 423:quantum/split_common/transactions.c **** #    define TRANSACTIONS_RGBLIGHT_SLAVE()       TRANSACTION_HANDLER_SLAVE(rgblight)
+ 424:quantum/split_common/transactions.c **** #    define TRANSACTIONS_RGBLIGHT_REGISTRATIONS [PUT_RGBLIGHT] = trans_initiator2target_initializer
+ 425:quantum/split_common/transactions.c **** 
+ 426:quantum/split_common/transactions.c **** #else  // defined(RGBLIGHT_ENABLE) && defined(RGBLIGHT_SPLIT)
+ 427:quantum/split_common/transactions.c **** 
+ 428:quantum/split_common/transactions.c **** #    define TRANSACTIONS_RGBLIGHT_MASTER()
+ 429:quantum/split_common/transactions.c **** #    define TRANSACTIONS_RGBLIGHT_SLAVE()
+ 430:quantum/split_common/transactions.c **** #    define TRANSACTIONS_RGBLIGHT_REGISTRATIONS
+ 431:quantum/split_common/transactions.c **** 
+ 432:quantum/split_common/transactions.c **** #endif  // defined(RGBLIGHT_ENABLE) && defined(RGBLIGHT_SPLIT)
+ 433:quantum/split_common/transactions.c **** 
+ 434:quantum/split_common/transactions.c **** ////////////////////////////////////////////////////
+ 435:quantum/split_common/transactions.c **** // LED Matrix
+ 436:quantum/split_common/transactions.c **** 
+ 437:quantum/split_common/transactions.c **** #if defined(LED_MATRIX_ENABLE) && defined(LED_MATRIX_SPLIT)
+ 438:quantum/split_common/transactions.c **** 
+ 439:quantum/split_common/transactions.c **** static bool led_matrix_handlers_master(matrix_row_t master_matrix[], matrix_row_t slave_matrix[]) {
+ 440:quantum/split_common/transactions.c ****     static uint32_t   last_update = 0;
+ 441:quantum/split_common/transactions.c ****     led_matrix_sync_t led_matrix_sync;
+ 442:quantum/split_common/transactions.c ****     memcpy(&led_matrix_sync.led_matrix, &led_matrix_eeconfig, sizeof(led_eeconfig_t));
+ 443:quantum/split_common/transactions.c ****     led_matrix_sync.led_suspend_state = led_matrix_get_suspend_state();
+ 444:quantum/split_common/transactions.c ****     return send_if_data_mismatch(PUT_LED_MATRIX, &last_update, &led_matrix_sync, &split_shmem->led_
+ 445:quantum/split_common/transactions.c **** }
+ 446:quantum/split_common/transactions.c **** 
+ 447:quantum/split_common/transactions.c **** static void led_matrix_handlers_slave(matrix_row_t master_matrix[], matrix_row_t slave_matrix[]) {
+ 448:quantum/split_common/transactions.c ****     memcpy(&led_matrix_eeconfig, &split_shmem->led_matrix_sync.led_matrix, sizeof(led_eeconfig_t));
+ 449:quantum/split_common/transactions.c ****     led_matrix_set_suspend_state(split_shmem->led_matrix_sync.led_suspend_state);
+ 450:quantum/split_common/transactions.c **** }
+ 451:quantum/split_common/transactions.c **** 
+ 452:quantum/split_common/transactions.c **** #    define TRANSACTIONS_LED_MATRIX_MASTER()      TRANSACTION_HANDLER_MASTER(led_matrix)
+ 453:quantum/split_common/transactions.c **** #    define TRANSACTIONS_LED_MATRIX_SLAVE()       TRANSACTION_HANDLER_SLAVE(led_matrix)
+ 454:quantum/split_common/transactions.c **** #    define TRANSACTIONS_LED_MATRIX_REGISTRATIONS [PUT_LED_MATRIX] = trans_initiator2target_initial
+ 455:quantum/split_common/transactions.c **** 
+ 456:quantum/split_common/transactions.c **** #else  // defined(LED_MATRIX_ENABLE) && defined(LED_MATRIX_SPLIT)
+ 457:quantum/split_common/transactions.c **** 
+ 458:quantum/split_common/transactions.c **** #    define TRANSACTIONS_LED_MATRIX_MASTER()
+ 459:quantum/split_common/transactions.c **** #    define TRANSACTIONS_LED_MATRIX_SLAVE()
+ 460:quantum/split_common/transactions.c **** #    define TRANSACTIONS_LED_MATRIX_REGISTRATIONS
+ 461:quantum/split_common/transactions.c **** 
+ 462:quantum/split_common/transactions.c **** #endif  // defined(LED_MATRIX_ENABLE) && defined(LED_MATRIX_SPLIT)
+ 463:quantum/split_common/transactions.c **** 
+ 464:quantum/split_common/transactions.c **** ////////////////////////////////////////////////////
+ 465:quantum/split_common/transactions.c **** // RGB Matrix
+ 466:quantum/split_common/transactions.c **** 
+ 467:quantum/split_common/transactions.c **** #if defined(RGB_MATRIX_ENABLE) && defined(RGB_MATRIX_SPLIT)
+ 468:quantum/split_common/transactions.c **** 
+ 469:quantum/split_common/transactions.c **** static bool rgb_matrix_handlers_master(matrix_row_t master_matrix[], matrix_row_t slave_matrix[]) {
+ 470:quantum/split_common/transactions.c ****     static uint32_t   last_update = 0;
+ 471:quantum/split_common/transactions.c ****     rgb_matrix_sync_t rgb_matrix_sync;
+ 472:quantum/split_common/transactions.c ****     memcpy(&rgb_matrix_sync.rgb_matrix, &rgb_matrix_config, sizeof(rgb_config_t));
+ 473:quantum/split_common/transactions.c ****     rgb_matrix_sync.rgb_suspend_state = rgb_matrix_get_suspend_state();
+ 474:quantum/split_common/transactions.c ****     return send_if_data_mismatch(PUT_RGB_MATRIX, &last_update, &rgb_matrix_sync, &split_shmem->rgb_
+ 475:quantum/split_common/transactions.c **** }
+ 476:quantum/split_common/transactions.c **** 
+ 477:quantum/split_common/transactions.c **** static void rgb_matrix_handlers_slave(matrix_row_t master_matrix[], matrix_row_t slave_matrix[]) {
+ 478:quantum/split_common/transactions.c ****     memcpy(&rgb_matrix_config, &split_shmem->rgb_matrix_sync.rgb_matrix, sizeof(rgb_config_t));
+ 479:quantum/split_common/transactions.c ****     rgb_matrix_set_suspend_state(split_shmem->rgb_matrix_sync.rgb_suspend_state);
+ 480:quantum/split_common/transactions.c **** }
+ 481:quantum/split_common/transactions.c **** 
+ 482:quantum/split_common/transactions.c **** #    define TRANSACTIONS_RGB_MATRIX_MASTER()      TRANSACTION_HANDLER_MASTER(rgb_matrix)
+ 483:quantum/split_common/transactions.c **** #    define TRANSACTIONS_RGB_MATRIX_SLAVE()       TRANSACTION_HANDLER_SLAVE(rgb_matrix)
+ 484:quantum/split_common/transactions.c **** #    define TRANSACTIONS_RGB_MATRIX_REGISTRATIONS [PUT_RGB_MATRIX] = trans_initiator2target_initial
+ 485:quantum/split_common/transactions.c **** 
+ 486:quantum/split_common/transactions.c **** #else  // defined(RGB_MATRIX_ENABLE) && defined(RGB_MATRIX_SPLIT)
+ 487:quantum/split_common/transactions.c **** 
+ 488:quantum/split_common/transactions.c **** #    define TRANSACTIONS_RGB_MATRIX_MASTER()
+ 489:quantum/split_common/transactions.c **** #    define TRANSACTIONS_RGB_MATRIX_SLAVE()
+ 490:quantum/split_common/transactions.c **** #    define TRANSACTIONS_RGB_MATRIX_REGISTRATIONS
+ 491:quantum/split_common/transactions.c **** 
+ 492:quantum/split_common/transactions.c **** #endif  // defined(RGB_MATRIX_ENABLE) && defined(RGB_MATRIX_SPLIT)
+ 493:quantum/split_common/transactions.c **** 
+ 494:quantum/split_common/transactions.c **** ////////////////////////////////////////////////////
+ 495:quantum/split_common/transactions.c **** // WPM
+ 496:quantum/split_common/transactions.c **** 
+ 497:quantum/split_common/transactions.c **** #if defined(WPM_ENABLE) && defined(SPLIT_WPM_ENABLE)
+ 498:quantum/split_common/transactions.c **** 
+ 499:quantum/split_common/transactions.c **** static bool wpm_handlers_master(matrix_row_t master_matrix[], matrix_row_t slave_matrix[]) {
+ 500:quantum/split_common/transactions.c ****     static uint32_t last_update = 0;
+ 501:quantum/split_common/transactions.c ****     uint8_t         current_wpm = get_current_wpm();
+ 502:quantum/split_common/transactions.c ****     return send_if_condition(PUT_WPM, &last_update, (current_wpm != split_shmem->current_wpm), &cur
+ 503:quantum/split_common/transactions.c **** }
+ 504:quantum/split_common/transactions.c **** 
+ 505:quantum/split_common/transactions.c **** static void wpm_handlers_slave(matrix_row_t master_matrix[], matrix_row_t slave_matrix[]) { set_cur
+ 506:quantum/split_common/transactions.c **** 
+ 507:quantum/split_common/transactions.c **** #    define TRANSACTIONS_WPM_MASTER()      TRANSACTION_HANDLER_MASTER(wpm)
+ 508:quantum/split_common/transactions.c **** #    define TRANSACTIONS_WPM_SLAVE()       TRANSACTION_HANDLER_SLAVE(wpm)
+ 509:quantum/split_common/transactions.c **** #    define TRANSACTIONS_WPM_REGISTRATIONS [PUT_WPM] = trans_initiator2target_initializer(current_w
+ 510:quantum/split_common/transactions.c **** 
+ 511:quantum/split_common/transactions.c **** #else  // defined(WPM_ENABLE) && defined(SPLIT_WPM_ENABLE)
+ 512:quantum/split_common/transactions.c **** 
+ 513:quantum/split_common/transactions.c **** #    define TRANSACTIONS_WPM_MASTER()
+ 514:quantum/split_common/transactions.c **** #    define TRANSACTIONS_WPM_SLAVE()
+ 515:quantum/split_common/transactions.c **** #    define TRANSACTIONS_WPM_REGISTRATIONS
+ 516:quantum/split_common/transactions.c **** 
+ 517:quantum/split_common/transactions.c **** #endif  // defined(WPM_ENABLE) && defined(SPLIT_WPM_ENABLE)
+ 518:quantum/split_common/transactions.c **** 
+ 519:quantum/split_common/transactions.c **** ////////////////////////////////////////////////////
+ 520:quantum/split_common/transactions.c **** // OLED
+ 521:quantum/split_common/transactions.c **** 
+ 522:quantum/split_common/transactions.c **** #if defined(OLED_ENABLE) && defined(SPLIT_OLED_ENABLE)
+ 523:quantum/split_common/transactions.c **** 
+ 524:quantum/split_common/transactions.c **** static bool oled_handlers_master(matrix_row_t master_matrix[], matrix_row_t slave_matrix[]) {
+ 525:quantum/split_common/transactions.c ****     static uint32_t last_update        = 0;
+ 526:quantum/split_common/transactions.c ****     bool            current_oled_state = is_oled_on();
+ 527:quantum/split_common/transactions.c ****     return send_if_condition(PUT_OLED, &last_update, (current_oled_state != split_shmem->current_ol
+ 528:quantum/split_common/transactions.c **** }
+ 529:quantum/split_common/transactions.c **** 
+ 530:quantum/split_common/transactions.c **** static void oled_handlers_slave(matrix_row_t master_matrix[], matrix_row_t slave_matrix[]) {
+ 531:quantum/split_common/transactions.c ****     if (split_shmem->current_oled_state) {
+ 532:quantum/split_common/transactions.c ****         oled_on();
+ 533:quantum/split_common/transactions.c ****     } else {
+ 534:quantum/split_common/transactions.c ****         oled_off();
+ 535:quantum/split_common/transactions.c ****     }
+ 536:quantum/split_common/transactions.c **** }
+ 537:quantum/split_common/transactions.c **** 
+ 538:quantum/split_common/transactions.c **** #    define TRANSACTIONS_OLED_MASTER()      TRANSACTION_HANDLER_MASTER(oled)
+ 539:quantum/split_common/transactions.c **** #    define TRANSACTIONS_OLED_SLAVE()       TRANSACTION_HANDLER_SLAVE(oled)
+ 540:quantum/split_common/transactions.c **** #    define TRANSACTIONS_OLED_REGISTRATIONS [PUT_OLED] = trans_initiator2target_initializer(current
+ 541:quantum/split_common/transactions.c **** 
+ 542:quantum/split_common/transactions.c **** #else  // defined(OLED_ENABLE) && defined(SPLIT_OLED_ENABLE)
+ 543:quantum/split_common/transactions.c **** 
+ 544:quantum/split_common/transactions.c **** #    define TRANSACTIONS_OLED_MASTER()
+ 545:quantum/split_common/transactions.c **** #    define TRANSACTIONS_OLED_SLAVE()
+ 546:quantum/split_common/transactions.c **** #    define TRANSACTIONS_OLED_REGISTRATIONS
+ 547:quantum/split_common/transactions.c **** 
+ 548:quantum/split_common/transactions.c **** #endif  // defined(OLED_ENABLE) && defined(SPLIT_OLED_ENABLE)
+ 549:quantum/split_common/transactions.c **** 
+ 550:quantum/split_common/transactions.c **** ////////////////////////////////////////////////////
+ 551:quantum/split_common/transactions.c **** // ST7565
+ 552:quantum/split_common/transactions.c **** 
+ 553:quantum/split_common/transactions.c **** #if defined(ST7565_ENABLE) && defined(SPLIT_ST7565_ENABLE)
+ 554:quantum/split_common/transactions.c **** 
+ 555:quantum/split_common/transactions.c **** static bool st7565_handlers_master(matrix_row_t master_matrix[], matrix_row_t slave_matrix[]) {
+ 556:quantum/split_common/transactions.c ****     static uint32_t last_update          = 0;
+ 557:quantum/split_common/transactions.c ****     bool            current_st7565_state = st7565_is_on();
+ 558:quantum/split_common/transactions.c ****     return send_if_condition(PUT_ST7565, &last_update, (current_st7565_state != split_shmem->curren
+ 559:quantum/split_common/transactions.c **** }
+ 560:quantum/split_common/transactions.c **** 
+ 561:quantum/split_common/transactions.c **** static void st7565_handlers_slave(matrix_row_t master_matrix[], matrix_row_t slave_matrix[]) {
+ 562:quantum/split_common/transactions.c ****     if (split_shmem->current_st7565_state) {
+ 563:quantum/split_common/transactions.c ****         st7565_on();
+ 564:quantum/split_common/transactions.c ****     } else {
+ 565:quantum/split_common/transactions.c ****         st7565_off();
+ 566:quantum/split_common/transactions.c ****     }
+ 567:quantum/split_common/transactions.c **** }
+ 568:quantum/split_common/transactions.c **** 
+ 569:quantum/split_common/transactions.c **** #    define TRANSACTIONS_ST7565_MASTER()      TRANSACTION_HANDLER_MASTER(st7565)
+ 570:quantum/split_common/transactions.c **** #    define TRANSACTIONS_ST7565_SLAVE()       TRANSACTION_HANDLER_SLAVE(st7565)
+ 571:quantum/split_common/transactions.c **** #    define TRANSACTIONS_ST7565_REGISTRATIONS [PUT_ST7565] = trans_initiator2target_initializer(cur
+ 572:quantum/split_common/transactions.c **** 
+ 573:quantum/split_common/transactions.c **** #else  // defined(ST7565_ENABLE) && defined(SPLIT_ST7565_ENABLE)
+ 574:quantum/split_common/transactions.c **** 
+ 575:quantum/split_common/transactions.c **** #    define TRANSACTIONS_ST7565_MASTER()
+ 576:quantum/split_common/transactions.c **** #    define TRANSACTIONS_ST7565_SLAVE()
+ 577:quantum/split_common/transactions.c **** #    define TRANSACTIONS_ST7565_REGISTRATIONS
+ 578:quantum/split_common/transactions.c **** 
+ 579:quantum/split_common/transactions.c **** #endif  // defined(ST7565_ENABLE) && defined(SPLIT_ST7565_ENABLE)
+ 580:quantum/split_common/transactions.c **** 
+ 581:quantum/split_common/transactions.c **** ////////////////////////////////////////////////////
+ 582:quantum/split_common/transactions.c **** 
+ 583:quantum/split_common/transactions.c **** uint8_t                  dummy;
+ 584:quantum/split_common/transactions.c **** split_transaction_desc_t split_transaction_table[NUM_TOTAL_TRANSACTIONS] = {
+ 585:quantum/split_common/transactions.c ****     // Set defaults
+ 586:quantum/split_common/transactions.c ****     [0 ...(NUM_TOTAL_TRANSACTIONS - 1)] = {NULL, 0, 0, 0, 0, 0},
+ 587:quantum/split_common/transactions.c **** 
+ 588:quantum/split_common/transactions.c **** #ifdef USE_I2C
+ 589:quantum/split_common/transactions.c ****     [I2C_EXECUTE_CALLBACK] = trans_initiator2target_initializer(transaction_id),
+ 590:quantum/split_common/transactions.c **** #endif  // USE_I2C
+ 591:quantum/split_common/transactions.c **** 
+ 592:quantum/split_common/transactions.c ****     // clang-format off
+ 593:quantum/split_common/transactions.c ****     TRANSACTIONS_SLAVE_MATRIX_REGISTRATIONS
+ 594:quantum/split_common/transactions.c ****     TRANSACTIONS_MASTER_MATRIX_REGISTRATIONS
+ 595:quantum/split_common/transactions.c ****     TRANSACTIONS_ENCODERS_REGISTRATIONS
+ 596:quantum/split_common/transactions.c ****     TRANSACTIONS_SYNC_TIMER_REGISTRATIONS
+ 597:quantum/split_common/transactions.c ****     TRANSACTIONS_LAYER_STATE_REGISTRATIONS
+ 598:quantum/split_common/transactions.c ****     TRANSACTIONS_LED_STATE_REGISTRATIONS
+ 599:quantum/split_common/transactions.c ****     TRANSACTIONS_MODS_REGISTRATIONS
+ 600:quantum/split_common/transactions.c ****     TRANSACTIONS_BACKLIGHT_REGISTRATIONS
+ 601:quantum/split_common/transactions.c ****     TRANSACTIONS_RGBLIGHT_REGISTRATIONS
+ 602:quantum/split_common/transactions.c ****     TRANSACTIONS_LED_MATRIX_REGISTRATIONS
+ 603:quantum/split_common/transactions.c ****     TRANSACTIONS_RGB_MATRIX_REGISTRATIONS
+ 604:quantum/split_common/transactions.c ****     TRANSACTIONS_WPM_REGISTRATIONS
+ 605:quantum/split_common/transactions.c ****     TRANSACTIONS_OLED_REGISTRATIONS
+ 606:quantum/split_common/transactions.c ****     TRANSACTIONS_ST7565_REGISTRATIONS
+ 607:quantum/split_common/transactions.c **** // clang-format on
+ 608:quantum/split_common/transactions.c **** 
+ 609:quantum/split_common/transactions.c **** #if defined(SPLIT_TRANSACTION_IDS_KB) || defined(SPLIT_TRANSACTION_IDS_USER)
+ 610:quantum/split_common/transactions.c ****         [PUT_RPC_INFO]  = trans_initiator2target_initializer_cb(rpc_info, slave_rpc_info_callback),
+ 611:quantum/split_common/transactions.c ****     [PUT_RPC_REQ_DATA]  = trans_initiator2target_initializer(rpc_m2s_buffer),
+ 612:quantum/split_common/transactions.c ****     [EXECUTE_RPC]       = trans_initiator2target_initializer_cb(rpc_info.transaction_id, slave_rpc_
+ 613:quantum/split_common/transactions.c ****     [GET_RPC_RESP_DATA] = trans_target2initiator_initializer(rpc_s2m_buffer),
+ 614:quantum/split_common/transactions.c **** #endif  // defined(SPLIT_TRANSACTION_IDS_KB) || defined(SPLIT_TRANSACTION_IDS_USER)
+ 615:quantum/split_common/transactions.c **** };
+ 616:quantum/split_common/transactions.c **** 
+ 617:quantum/split_common/transactions.c **** bool transactions_master(matrix_row_t master_matrix[], matrix_row_t slave_matrix[]) {
+ 896               		.loc 1 617 85 is_stmt 1 view -0
+ 897               		.cfi_startproc
+ 898               		.loc 1 617 85 is_stmt 0 view .LVU149
+ 899 0000 0F93      		push r16
+ 900               	.LCFI58:
+ 901               		.cfi_def_cfa_offset 3
+ 902               		.cfi_offset 16, -2
+ 903 0002 1F93      		push r17
+ 904               	.LCFI59:
+ 905               		.cfi_def_cfa_offset 4
+ 906               		.cfi_offset 17, -3
+ 907 0004 CF93      		push r28
+ 908               	.LCFI60:
+ 909               		.cfi_def_cfa_offset 5
+ 910               		.cfi_offset 28, -4
+ 911 0006 DF93      		push r29
+ 912               	.LCFI61:
+ 913               		.cfi_def_cfa_offset 6
+ 914               		.cfi_offset 29, -5
+ 915               	/* prologue: function */
+ 916               	/* frame size = 0 */
+ 917               	/* stack size = 4 */
+ 918               	.L__stack_usage = 4
+ 919 0008 D82F      		mov r29,r24
+ 920 000a C92F      		mov r28,r25
+ 921 000c 8B01      		movw r16,r22
+ 618:quantum/split_common/transactions.c ****     TRANSACTIONS_SLAVE_MATRIX_MASTER();
+ 922               		.loc 1 618 5 is_stmt 1 view .LVU150
+ 923               		.loc 1 618 5 view .LVU151
+ 924 000e 20E0      		ldi r18,lo8(gs(slave_matrix_handlers_master))
+ 925 0010 30E0      		ldi r19,hi8(gs(slave_matrix_handlers_master))
+ 926 0012 40E0      		ldi r20,lo8(.LC0)
+ 927 0014 50E0      		ldi r21,hi8(.LC0)
+ 928 0016 0E94 0000 		call transaction_handler_master
+ 929               	.LVL63:
+ 930               		.loc 1 618 5 is_stmt 0 view .LVU152
+ 931 001a 8823      		tst r24
+ 932 001c 01F0      		breq .L41
+ 933               		.loc 1 618 5 is_stmt 1 discriminator 2 view .LVU153
+ 619:quantum/split_common/transactions.c ****     TRANSACTIONS_MASTER_MATRIX_MASTER();
+ 934               		.loc 1 619 40 discriminator 2 view .LVU154
+ 620:quantum/split_common/transactions.c ****     TRANSACTIONS_ENCODERS_MASTER();
+ 935               		.loc 1 620 5 discriminator 2 view .LVU155
+ 936               		.loc 1 620 5 discriminator 2 view .LVU156
+ 937 001e 20E0      		ldi r18,lo8(gs(encoder_handlers_master))
+ 938 0020 30E0      		ldi r19,hi8(gs(encoder_handlers_master))
+ 939 0022 40E0      		ldi r20,lo8(.LC1)
+ 940 0024 50E0      		ldi r21,hi8(.LC1)
+ 941 0026 B801      		movw r22,r16
+ 942 0028 8D2F      		mov r24,r29
+ 943 002a 9C2F      		mov r25,r28
+ 944 002c 0E94 0000 		call transaction_handler_master
+ 945               	.LVL64:
+ 946 0030 8823      		tst r24
+ 947 0032 01F0      		breq .L41
+ 948               		.loc 1 620 5 discriminator 2 view .LVU157
+ 621:quantum/split_common/transactions.c ****     TRANSACTIONS_SYNC_TIMER_MASTER();
+ 949               		.loc 1 621 5 discriminator 2 view .LVU158
+ 950               		.loc 1 621 5 discriminator 2 view .LVU159
+ 951 0034 20E0      		ldi r18,lo8(gs(sync_timer_handlers_master))
+ 952 0036 30E0      		ldi r19,hi8(gs(sync_timer_handlers_master))
+ 953 0038 40E0      		ldi r20,lo8(.LC2)
+ 954 003a 50E0      		ldi r21,hi8(.LC2)
+ 955 003c B801      		movw r22,r16
+ 956 003e 8D2F      		mov r24,r29
+ 957 0040 9C2F      		mov r25,r28
+ 958               	/* epilogue start */
+ 622:quantum/split_common/transactions.c ****     TRANSACTIONS_LAYER_STATE_MASTER();
+ 623:quantum/split_common/transactions.c ****     TRANSACTIONS_LED_STATE_MASTER();
+ 624:quantum/split_common/transactions.c ****     TRANSACTIONS_MODS_MASTER();
+ 625:quantum/split_common/transactions.c ****     TRANSACTIONS_BACKLIGHT_MASTER();
+ 626:quantum/split_common/transactions.c ****     TRANSACTIONS_RGBLIGHT_MASTER();
+ 627:quantum/split_common/transactions.c ****     TRANSACTIONS_LED_MATRIX_MASTER();
+ 628:quantum/split_common/transactions.c ****     TRANSACTIONS_RGB_MATRIX_MASTER();
+ 629:quantum/split_common/transactions.c ****     TRANSACTIONS_WPM_MASTER();
+ 630:quantum/split_common/transactions.c ****     TRANSACTIONS_OLED_MASTER();
+ 631:quantum/split_common/transactions.c ****     TRANSACTIONS_ST7565_MASTER();
+ 632:quantum/split_common/transactions.c ****     return true;
+ 633:quantum/split_common/transactions.c **** }
+ 959               		.loc 1 633 1 is_stmt 0 discriminator 2 view .LVU160
+ 960 0042 DF91      		pop r29
+ 961 0044 CF91      		pop r28
+ 962 0046 1F91      		pop r17
+ 963 0048 0F91      		pop r16
+ 964               	.LVL65:
+ 621:quantum/split_common/transactions.c ****     TRANSACTIONS_SYNC_TIMER_MASTER();
+ 965               		.loc 1 621 5 discriminator 2 view .LVU161
+ 966 004a 0C94 0000 		jmp transaction_handler_master
+ 967               	.LVL66:
+ 968               	.L41:
+ 969               		.loc 1 633 1 view .LVU162
+ 970 004e 80E0      		ldi r24,0
+ 971               	/* epilogue start */
+ 972 0050 DF91      		pop r29
+ 973 0052 CF91      		pop r28
+ 974 0054 1F91      		pop r17
+ 975 0056 0F91      		pop r16
+ 976               	.LVL67:
+ 977               		.loc 1 633 1 view .LVU163
+ 978 0058 0895      		ret
+ 979               		.cfi_endproc
+ 980               	.LFE37:
+ 982               		.section	.text.transactions_slave,"ax",@progbits
+ 983               	.global	transactions_slave
+ 985               	transactions_slave:
+ 986               	.LVL68:
+ 987               	.LFB38:
+ 634:quantum/split_common/transactions.c **** 
+ 635:quantum/split_common/transactions.c **** void transactions_slave(matrix_row_t master_matrix[], matrix_row_t slave_matrix[]) {
+ 988               		.loc 1 635 84 is_stmt 1 view -0
+ 989               		.cfi_startproc
+ 990               		.loc 1 635 84 is_stmt 0 view .LVU165
+ 991 0000 0F93      		push r16
+ 992               	.LCFI62:
+ 993               		.cfi_def_cfa_offset 3
+ 994               		.cfi_offset 16, -2
+ 995 0002 1F93      		push r17
+ 996               	.LCFI63:
+ 997               		.cfi_def_cfa_offset 4
+ 998               		.cfi_offset 17, -3
+ 999 0004 CF93      		push r28
+ 1000               	.LCFI64:
+ 1001               		.cfi_def_cfa_offset 5
+ 1002               		.cfi_offset 28, -4
+ 1003 0006 DF93      		push r29
+ 1004               	.LCFI65:
+ 1005               		.cfi_def_cfa_offset 6
+ 1006               		.cfi_offset 29, -5
+ 1007 0008 0F92      		push __tmp_reg__
+ 1008               	.LCFI66:
+ 1009               		.cfi_def_cfa_offset 7
+ 1010 000a CDB7      		in r28,__SP_L__
+ 1011 000c DEB7      		in r29,__SP_H__
+ 1012               	.LCFI67:
+ 1013               		.cfi_def_cfa_register 28
+ 1014               	/* prologue: function */
+ 1015               	/* frame size = 1 */
+ 1016               	/* stack size = 5 */
+ 1017               	.L__stack_usage = 5
+ 1018 000e FB01      		movw r30,r22
+ 636:quantum/split_common/transactions.c ****     TRANSACTIONS_SLAVE_MATRIX_SLAVE();
+ 1019               		.loc 1 636 5 is_stmt 1 view .LVU166
+ 1020               		.loc 1 636 5 view .LVU167
+ 1021               	.LBB75:
+ 1022               		.loc 1 636 5 view .LVU168
+ 1023               	.LVL69:
+ 1024               	.LBB76:
+ 1025               	.LBI76:
+  48:/usr/avr/include/util/atomic.h **** {
+ 1026               		.loc 2 48 27 view .LVU169
+ 1027               	.LBB77:
+  50:/usr/avr/include/util/atomic.h ****     return 1;
+ 1028               		.loc 2 50 5 view .LVU170
+ 1029               	/* #APP */
+ 1030               	 ;  50 "/usr/avr/include/util/atomic.h" 1
+ 1031 0010 F894      		cli
+ 1032               	 ;  0 "" 2
+  51:/usr/avr/include/util/atomic.h **** }
+ 1033               		.loc 2 51 5 view .LVU171
+ 1034               	.LVL70:
+  51:/usr/avr/include/util/atomic.h **** }
+ 1035               		.loc 2 51 5 is_stmt 0 view .LVU172
+ 1036               	/* #NOAPP */
+ 1037               	.LBE77:
+ 1038               	.LBE76:
+ 1039               		.loc 1 636 5 is_stmt 1 view .LVU173
+ 1040               		.loc 1 636 5 view .LVU174
+ 1041               	.LBB78:
+ 1042               	.LBI78:
+ 132:quantum/split_common/transactions.c ****     memcpy(split_shmem->smatrix.matrix, slave_matrix, sizeof(split_shmem->smatrix.matrix));
+ 1043               		.loc 1 132 13 view .LVU175
+ 1044               	.LBB79:
+ 133:quantum/split_common/transactions.c ****     split_shmem->smatrix.checksum = crc8(split_shmem->smatrix.matrix, sizeof(split_shmem->smatrix.m
+ 1045               		.loc 1 133 5 view .LVU176
+ 133:quantum/split_common/transactions.c ****     split_shmem->smatrix.checksum = crc8(split_shmem->smatrix.matrix, sizeof(split_shmem->smatrix.m
+ 1046               		.loc 1 133 23 is_stmt 0 view .LVU177
+ 1047 0012 0091 0000 		lds r16,split_shmem
+ 1048 0016 1091 0000 		lds r17,split_shmem+1
+ 133:quantum/split_common/transactions.c ****     split_shmem->smatrix.checksum = crc8(split_shmem->smatrix.matrix, sizeof(split_shmem->smatrix.m
+ 1049               		.loc 1 133 32 view .LVU178
+ 1050 001a C801      		movw r24,r16
+ 1051               	.LVL71:
+ 133:quantum/split_common/transactions.c ****     split_shmem->smatrix.checksum = crc8(split_shmem->smatrix.matrix, sizeof(split_shmem->smatrix.m
+ 1052               		.loc 1 133 32 view .LVU179
+ 1053 001c 0196      		adiw r24,1
+ 133:quantum/split_common/transactions.c ****     split_shmem->smatrix.checksum = crc8(split_shmem->smatrix.matrix, sizeof(split_shmem->smatrix.m
+ 1054               		.loc 1 133 5 view .LVU180
+ 1055 001e 25E0      		ldi r18,lo8(5)
+ 1056 0020 DC01      		movw r26,r24
+ 1057               		0:
+ 1058 0022 0190      		ld r0,Z+
+ 1059 0024 0D92      		st X+,r0
+ 1060 0026 2A95      		dec r18
+ 1061 0028 01F4      		brne 0b
+ 1062               	.LVL72:
+ 134:quantum/split_common/transactions.c **** }
+ 1063               		.loc 1 134 5 is_stmt 1 view .LVU181
+ 134:quantum/split_common/transactions.c **** }
+ 1064               		.loc 1 134 37 is_stmt 0 view .LVU182
+ 1065 002a 65E0      		ldi r22,lo8(5)
+ 1066 002c 70E0      		ldi r23,0
+ 1067               	.LVL73:
+ 134:quantum/split_common/transactions.c **** }
+ 1068               		.loc 1 134 37 view .LVU183
+ 1069 002e 0E94 0000 		call crc8
+ 1070               	.LVL74:
+ 134:quantum/split_common/transactions.c **** }
+ 1071               		.loc 1 134 35 view .LVU184
+ 1072 0032 F801      		movw r30,r16
+ 1073 0034 8083      		st Z,r24
+ 1074               	.LVL75:
+ 134:quantum/split_common/transactions.c **** }
+ 1075               		.loc 1 134 35 view .LVU185
+ 1076               	.LBE79:
+ 1077               	.LBE78:
+ 1078               		.loc 1 636 5 is_stmt 1 view .LVU186
+ 1079               		.loc 1 636 5 view .LVU187
+ 1080               	.LBB80:
+ 1081               	.LBI80:
+  54:/usr/avr/include/util/atomic.h **** {
+ 1082               		.loc 2 54 24 view .LVU188
+ 1083               	.LBB81:
+  56:/usr/avr/include/util/atomic.h ****     __asm__ volatile ("" ::: "memory");
+ 1084               		.loc 2 56 5 view .LVU189
+ 1085               	/* #APP */
+ 1086               	 ;  56 "/usr/avr/include/util/atomic.h" 1
+ 1087 0036 7894      		sei
+ 1088               	 ;  0 "" 2
+  57:/usr/avr/include/util/atomic.h ****     (void)__s;
+ 1089               		.loc 2 57 5 view .LVU190
+ 1090               		.loc 2 58 5 view .LVU191
+ 1091               	.LVL76:
+ 1092               		.loc 2 58 5 is_stmt 0 view .LVU192
+ 1093               	/* #NOAPP */
+ 1094               	.LBE81:
+ 1095               	.LBE80:
+ 1096               	.LBE75:
+ 1097               		.loc 1 636 5 is_stmt 1 view .LVU193
+ 1098               		.loc 1 636 5 view .LVU194
+ 637:quantum/split_common/transactions.c ****     TRANSACTIONS_MASTER_MATRIX_SLAVE();
+ 1099               		.loc 1 637 39 view .LVU195
+ 638:quantum/split_common/transactions.c ****     TRANSACTIONS_ENCODERS_SLAVE();
+ 1100               		.loc 1 638 5 view .LVU196
+ 1101               		.loc 1 638 5 view .LVU197
+ 1102               	.LBB82:
+ 1103               		.loc 1 638 5 view .LVU198
+ 1104               	.LBB83:
+ 1105               	.LBI83:
+  48:/usr/avr/include/util/atomic.h **** {
+ 1106               		.loc 2 48 27 view .LVU199
+ 1107               	.LBB84:
+  50:/usr/avr/include/util/atomic.h ****     return 1;
+ 1108               		.loc 2 50 5 view .LVU200
+ 1109               	/* #APP */
+ 1110               	 ;  50 "/usr/avr/include/util/atomic.h" 1
+ 1111 0038 F894      		cli
+ 1112               	 ;  0 "" 2
+  51:/usr/avr/include/util/atomic.h **** }
+ 1113               		.loc 2 51 5 view .LVU201
+ 1114               	.LVL77:
+  51:/usr/avr/include/util/atomic.h **** }
+ 1115               		.loc 2 51 5 is_stmt 0 view .LVU202
+ 1116               	/* #NOAPP */
+ 1117               	.LBE84:
+ 1118               	.LBE83:
+ 1119               		.loc 1 638 5 is_stmt 1 view .LVU203
+ 1120               		.loc 1 638 5 view .LVU204
+ 1121               	.LBB85:
+ 1122               	.LBI85:
+ 186:quantum/split_common/transactions.c ****     uint8_t encoder_state[NUMBER_OF_ENCODERS];
+ 1123               		.loc 1 186 13 view .LVU205
+ 1124               	.LBB86:
+ 187:quantum/split_common/transactions.c ****     encoder_state_raw(encoder_state);
+ 1125               		.loc 1 187 5 view .LVU206
+ 188:quantum/split_common/transactions.c ****     // Always prepare the encoder state for read.
+ 1126               		.loc 1 188 5 view .LVU207
+ 1127 003a CE01      		movw r24,r28
+ 1128 003c 0196      		adiw r24,1
+ 1129 003e 0E94 0000 		call encoder_state_raw
+ 1130               	.LVL78:
+ 190:quantum/split_common/transactions.c ****     // Now update the checksum given that the encoders has been written to
+ 1131               		.loc 1 190 5 view .LVU208
+ 1132 0042 8981      		ldd r24,Y+1
+ 1133 0044 F801      		movw r30,r16
+ 1134 0046 8783      		std Z+7,r24
+ 192:quantum/split_common/transactions.c **** }
+ 1135               		.loc 1 192 5 view .LVU209
+ 192:quantum/split_common/transactions.c **** }
+ 1136               		.loc 1 192 38 is_stmt 0 view .LVU210
+ 1137 0048 61E0      		ldi r22,lo8(1)
+ 1138 004a 70E0      		ldi r23,0
+ 1139 004c CE01      		movw r24,r28
+ 1140 004e 0196      		adiw r24,1
+ 1141 0050 0E94 0000 		call crc8
+ 1142               	.LVL79:
+ 192:quantum/split_common/transactions.c **** }
+ 1143               		.loc 1 192 36 view .LVU211
+ 1144 0054 F801      		movw r30,r16
+ 1145 0056 8683      		std Z+6,r24
+ 1146               	.LVL80:
+ 192:quantum/split_common/transactions.c **** }
+ 1147               		.loc 1 192 36 view .LVU212
+ 1148               	.LBE86:
+ 1149               	.LBE85:
+ 1150               		.loc 1 638 5 is_stmt 1 view .LVU213
+ 1151               		.loc 1 638 5 view .LVU214
+ 1152               	.LBB87:
+ 1153               	.LBI87:
+  54:/usr/avr/include/util/atomic.h **** {
+ 1154               		.loc 2 54 24 view .LVU215
+ 1155               	.LBB88:
+  56:/usr/avr/include/util/atomic.h ****     __asm__ volatile ("" ::: "memory");
+ 1156               		.loc 2 56 5 view .LVU216
+ 1157               	/* #APP */
+ 1158               	 ;  56 "/usr/avr/include/util/atomic.h" 1
+ 1159 0058 7894      		sei
+ 1160               	 ;  0 "" 2
+  57:/usr/avr/include/util/atomic.h ****     (void)__s;
+ 1161               		.loc 2 57 5 view .LVU217
+ 1162               		.loc 2 58 5 view .LVU218
+ 1163               	.LVL81:
+ 1164               		.loc 2 58 5 is_stmt 0 view .LVU219
+ 1165               	/* #NOAPP */
+ 1166               	.LBE88:
+ 1167               	.LBE87:
+ 1168               	.LBE82:
+ 1169               		.loc 1 638 5 is_stmt 1 view .LVU220
+ 1170               		.loc 1 638 5 view .LVU221
+ 639:quantum/split_common/transactions.c ****     TRANSACTIONS_SYNC_TIMER_SLAVE();
+ 1171               		.loc 1 639 5 view .LVU222
+ 1172               		.loc 1 639 5 view .LVU223
+ 1173               	.LBB89:
+ 1174               		.loc 1 639 5 view .LVU224
+ 1175               	.LBB90:
+ 1176               	.LBI90:
+  48:/usr/avr/include/util/atomic.h **** {
+ 1177               		.loc 2 48 27 view .LVU225
+ 1178               	.LBB91:
+  50:/usr/avr/include/util/atomic.h ****     return 1;
+ 1179               		.loc 2 50 5 view .LVU226
+ 1180               	/* #APP */
+ 1181               	 ;  50 "/usr/avr/include/util/atomic.h" 1
+ 1182 005a F894      		cli
+ 1183               	 ;  0 "" 2
+  51:/usr/avr/include/util/atomic.h **** }
+ 1184               		.loc 2 51 5 view .LVU227
+ 1185               	.LVL82:
+  51:/usr/avr/include/util/atomic.h **** }
+ 1186               		.loc 2 51 5 is_stmt 0 view .LVU228
+ 1187               	/* #NOAPP */
+ 1188               	.LBE91:
+ 1189               	.LBE90:
+ 1190               		.loc 1 639 5 is_stmt 1 view .LVU229
+ 1191               		.loc 1 639 5 view .LVU230
+ 1192               	.LBB92:
+ 1193               	.LBI92:
+ 230:quantum/split_common/transactions.c ****     static uint32_t last_sync_timer = 0;
+ 1194               		.loc 1 230 13 view .LVU231
+ 1195               	.LBB93:
+ 231:quantum/split_common/transactions.c ****     if (last_sync_timer != split_shmem->sync_timer) {
+ 1196               		.loc 1 231 5 view .LVU232
+ 232:quantum/split_common/transactions.c ****         last_sync_timer = split_shmem->sync_timer;
+ 1197               		.loc 1 232 5 view .LVU233
+ 232:quantum/split_common/transactions.c ****         last_sync_timer = split_shmem->sync_timer;
+ 1198               		.loc 1 232 39 is_stmt 0 view .LVU234
+ 1199 005c 6085      		ldd r22,Z+8
+ 1200 005e 7185      		ldd r23,Z+9
+ 1201 0060 8285      		ldd r24,Z+10
+ 1202 0062 9385      		ldd r25,Z+11
+ 232:quantum/split_common/transactions.c ****         last_sync_timer = split_shmem->sync_timer;
+ 1203               		.loc 1 232 8 view .LVU235
+ 1204 0064 0091 0000 		lds r16,last_sync_timer.0
+ 1205 0068 1091 0000 		lds r17,last_sync_timer.0+1
+ 1206 006c 2091 0000 		lds r18,last_sync_timer.0+2
+ 1207 0070 3091 0000 		lds r19,last_sync_timer.0+3
+ 1208 0074 6017      		cp r22,r16
+ 1209 0076 7107      		cpc r23,r17
+ 1210 0078 8207      		cpc r24,r18
+ 1211 007a 9307      		cpc r25,r19
+ 1212 007c 01F0      		breq .L47
+ 233:quantum/split_common/transactions.c ****         sync_timer_update(last_sync_timer);
+ 1213               		.loc 1 233 9 is_stmt 1 view .LVU236
+ 233:quantum/split_common/transactions.c ****         sync_timer_update(last_sync_timer);
+ 1214               		.loc 1 233 25 is_stmt 0 view .LVU237
+ 1215 007e 6093 0000 		sts last_sync_timer.0,r22
+ 1216 0082 7093 0000 		sts last_sync_timer.0+1,r23
+ 1217 0086 8093 0000 		sts last_sync_timer.0+2,r24
+ 1218 008a 9093 0000 		sts last_sync_timer.0+3,r25
+ 234:quantum/split_common/transactions.c ****     }
+ 1219               		.loc 1 234 9 is_stmt 1 view .LVU238
+ 1220 008e 0E94 0000 		call sync_timer_update
+ 1221               	.LVL83:
+ 1222               	.L47:
+ 234:quantum/split_common/transactions.c ****     }
+ 1223               		.loc 1 234 9 is_stmt 0 view .LVU239
+ 1224               	.LBE93:
+ 1225               	.LBE92:
+ 1226               		.loc 1 639 5 is_stmt 1 view .LVU240
+ 1227               		.loc 1 639 5 view .LVU241
+ 1228               	.LBB94:
+ 1229               	.LBI94:
+  54:/usr/avr/include/util/atomic.h **** {
+ 1230               		.loc 2 54 24 view .LVU242
+ 1231               	.LBB95:
+  56:/usr/avr/include/util/atomic.h ****     __asm__ volatile ("" ::: "memory");
+ 1232               		.loc 2 56 5 view .LVU243
+ 1233               	/* #APP */
+ 1234               	 ;  56 "/usr/avr/include/util/atomic.h" 1
+ 1235 0092 7894      		sei
+ 1236               	 ;  0 "" 2
+  57:/usr/avr/include/util/atomic.h ****     (void)__s;
+ 1237               		.loc 2 57 5 view .LVU244
+ 1238               		.loc 2 58 5 view .LVU245
+ 1239               	.LVL84:
+ 1240               		.loc 2 58 5 is_stmt 0 view .LVU246
+ 1241               	/* #NOAPP */
+ 1242               	.LBE95:
+ 1243               	.LBE94:
+ 1244               	.LBE89:
+ 1245               		.loc 1 639 5 is_stmt 1 view .LVU247
+ 1246               		.loc 1 639 5 view .LVU248
+ 640:quantum/split_common/transactions.c ****     TRANSACTIONS_LAYER_STATE_SLAVE();
+ 1247               		.loc 1 640 37 view .LVU249
+ 641:quantum/split_common/transactions.c ****     TRANSACTIONS_LED_STATE_SLAVE();
+ 1248               		.loc 1 641 35 view .LVU250
+ 642:quantum/split_common/transactions.c ****     TRANSACTIONS_MODS_SLAVE();
+ 1249               		.loc 1 642 30 view .LVU251
+ 643:quantum/split_common/transactions.c ****     TRANSACTIONS_BACKLIGHT_SLAVE();
+ 1250               		.loc 1 643 35 view .LVU252
+ 644:quantum/split_common/transactions.c ****     TRANSACTIONS_RGBLIGHT_SLAVE();
+ 1251               		.loc 1 644 34 view .LVU253
+ 645:quantum/split_common/transactions.c ****     TRANSACTIONS_LED_MATRIX_SLAVE();
+ 1252               		.loc 1 645 36 view .LVU254
+ 646:quantum/split_common/transactions.c ****     TRANSACTIONS_RGB_MATRIX_SLAVE();
+ 1253               		.loc 1 646 36 view .LVU255
+ 647:quantum/split_common/transactions.c ****     TRANSACTIONS_WPM_SLAVE();
+ 1254               		.loc 1 647 29 view .LVU256
+ 648:quantum/split_common/transactions.c ****     TRANSACTIONS_OLED_SLAVE();
+ 1255               		.loc 1 648 30 view .LVU257
+ 649:quantum/split_common/transactions.c ****     TRANSACTIONS_ST7565_SLAVE();
+ 1256               		.loc 1 649 32 view .LVU258
+ 1257               	/* epilogue start */
+ 650:quantum/split_common/transactions.c **** }
+ 1258               		.loc 1 650 1 is_stmt 0 view .LVU259
+ 1259 0094 0F90      		pop __tmp_reg__
+ 1260 0096 DF91      		pop r29
+ 1261 0098 CF91      		pop r28
+ 1262 009a 1F91      		pop r17
+ 1263 009c 0F91      		pop r16
+ 1264 009e 0895      		ret
+ 1265               		.cfi_endproc
+ 1266               	.LFE38:
+ 1268               		.section	.bss.last_sync_timer.0,"aw",@nobits
+ 1271               	last_sync_timer.0:
+ 1272 0000 0000 0000 		.zero	4
+ 1273               		.section	.progmem.data.__c.1,"a"
+ 1276               	__c.1:
+ 1277 0000 4661 696C 		.string	"Failed to execute %s\n"
+ 1277      6564 2074 
+ 1277      6F20 6578 
+ 1277      6563 7574 
+ 1277      6520 2573 
+ 1278               		.section	.bss.last_matrix.2,"aw",@nobits
+ 1281               	last_matrix.2:
+ 1282 0000 0000 0000 		.zero	5
+ 1282      00
+ 1283               		.section	.bss.last_update.3,"aw",@nobits
+ 1286               	last_update.3:
+ 1287 0000 0000 0000 		.zero	4
+ 1288               		.section	.bss.last_update.4,"aw",@nobits
+ 1291               	last_update.4:
+ 1292 0000 0000 0000 		.zero	4
+ 1293               		.section	.bss.last_update.5,"aw",@nobits
+ 1296               	last_update.5:
+ 1297 0000 0000 0000 		.zero	4
+ 1298               	.global	split_transaction_table
+ 1299               		.section	.data.split_transaction_table,"aw"
+ 1302               	split_transaction_table:
+ 1303 0000 0000      		.word	dummy
+ 1304 0002 00        		.byte	0
+ 1305 0003 0000      		.word	0
+ 1306 0005 01        		.byte	1
+ 1307 0006 0000      		.word	0
+ 1308 0008 0000      		.word	0
+ 1309 000a 0000      		.word	dummy
+ 1310 000c 00        		.byte	0
+ 1311 000d 0000      		.word	0
+ 1312 000f 05        		.byte	5
+ 1313 0010 0100      		.word	1
+ 1314 0012 0000      		.word	0
+ 1315 0014 0000      		.word	dummy
+ 1316 0016 00        		.byte	0
+ 1317 0017 0000      		.word	0
+ 1318 0019 01        		.byte	1
+ 1319 001a 0600      		.word	6
+ 1320 001c 0000      		.word	0
+ 1321 001e 0000      		.word	dummy
+ 1322 0020 00        		.byte	0
+ 1323 0021 0000      		.word	0
+ 1324 0023 01        		.byte	1
+ 1325 0024 0700      		.word	7
+ 1326 0026 0000      		.word	0
+ 1327 0028 0000      		.word	dummy
+ 1328 002a 04        		.byte	4
+ 1329 002b 0800      		.word	8
+ 1330 002d 00        		.byte	0
+ 1331 002e 0000      		.word	0
+ 1332 0030 0000      		.word	0
+ 1333               		.comm	dummy,1,1
+ 1334               		.weak	crc8
+ 1335               		.text
+ 1336               	.Letext0:
+ 1337               		.file 4 "/usr/avr/include/stdint.h"
+ 1338               		.file 5 "/usr/lib/gcc/avr/11.2.0/include/stddef.h"
+ 1339               		.file 6 "quantum/matrix.h"
+ 1340               		.file 7 "quantum/logging/debug.h"
+ 1341               		.file 8 "tmk_core/common/avr/gpio.h"
+ 1342               		.file 9 "quantum/split_common/transport.h"
+ 1343               		.file 10 "quantum/split_common/transactions.h"
+ 1344               		.file 11 "tmk_core/common/sync_timer.h"
+ 1345               		.file 12 "quantum/encoder.h"
+ 1346               		.file 13 "tmk_core/common/avr/xprintf.h"
+ 1347               		.file 14 "/usr/avr/include/math.h"
+ 1348               		.file 15 "/usr/avr/include/string.h"
+ 1349               		.file 16 "quantum/crc.h"
+ 1350               		.file 17 "quantum/split_common/split_util.h"
+ 1351               		.file 18 "tmk_core/common/timer.h"
+ 1352               		.file 19 "quantum/sequencer/sequencer.h"
+ 1353               		.file 20 "quantum/split_common/transaction_id_define.h"
+ 1354               		.file 21 "<built-in>"
+DEFINED SYMBOLS
+                            *ABS*:0000000000000000 transactions.c
+     /tmp/ccPTiBJH.s:2      *ABS*:000000000000003e __SP_H__
+     /tmp/ccPTiBJH.s:3      *ABS*:000000000000003d __SP_L__
+     /tmp/ccPTiBJH.s:4      *ABS*:000000000000003f __SREG__
+     /tmp/ccPTiBJH.s:5      *ABS*:0000000000000000 __tmp_reg__
+     /tmp/ccPTiBJH.s:6      *ABS*:0000000000000001 __zero_reg__
+     /tmp/ccPTiBJH.s:12     .text.sync_timer_handlers_master:0000000000000000 sync_timer_handlers_master
+     /tmp/ccPTiBJH.s:1296   .bss.last_update.5:0000000000000000 last_update.5
+     /tmp/ccPTiBJH.s:143    .text.transaction_handler_master:0000000000000000 transaction_handler_master
+     /tmp/ccPTiBJH.s:1276   .progmem.data.__c.1:0000000000000000 __c.1
+     /tmp/ccPTiBJH.s:418    .text.read_if_checksum_mismatch:0000000000000000 read_if_checksum_mismatch
+     /tmp/ccPTiBJH.s:660    .text.encoder_handlers_master:0000000000000000 encoder_handlers_master
+     /tmp/ccPTiBJH.s:1291   .bss.last_update.4:0000000000000000 last_update.4
+     /tmp/ccPTiBJH.s:757    .text.slave_matrix_handlers_master:0000000000000000 slave_matrix_handlers_master
+     /tmp/ccPTiBJH.s:1286   .bss.last_update.3:0000000000000000 last_update.3
+     /tmp/ccPTiBJH.s:1281   .bss.last_matrix.2:0000000000000000 last_matrix.2
+     /tmp/ccPTiBJH.s:893    .text.transactions_master:0000000000000000 transactions_master
+     /tmp/ccPTiBJH.s:985    .text.transactions_slave:0000000000000000 transactions_slave
+     /tmp/ccPTiBJH.s:1271   .bss.last_sync_timer.0:0000000000000000 last_sync_timer.0
+     /tmp/ccPTiBJH.s:1302   .data.split_transaction_table:0000000000000000 split_transaction_table
+                            *COM*:0000000000000001 dummy
+
+UNDEFINED SYMBOLS
+timer_elapsed32
+sync_timer_read32
+transport_execute_transaction
+timer_read32
+is_transport_connected
+debug_config
+__xprintf
+crc8
+memcpy
+split_shmem
+encoder_update_raw
+encoder_state_raw
+sync_timer_update
+__do_copy_data
+__do_clear_bss

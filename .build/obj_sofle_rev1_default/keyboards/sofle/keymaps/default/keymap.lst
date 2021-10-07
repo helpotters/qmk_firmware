@@ -1,0 +1,1423 @@
+   1               		.file	"keymap.c"
+   2               	__SP_H__ = 0x3e
+   3               	__SP_L__ = 0x3d
+   4               	__SREG__ = 0x3f
+   5               	__tmp_reg__ = 0
+   6               	__zero_reg__ = 1
+   7               		.text
+   8               	.Ltext0:
+   9               		.cfi_sections	.debug_frame
+  10               		.section	.text.oled_task_user,"ax",@progbits
+  11               	.global	oled_task_user
+  13               	oled_task_user:
+  14               	.LFB27:
+  15               		.file 1 "keyboards/sofle/keymaps/default/keymap.c"
+   1:keyboards/sofle/keymaps/default/keymap.c **** #include QMK_KEYBOARD_H
+   2:keyboards/sofle/keymaps/default/keymap.c **** 
+   3:keyboards/sofle/keymaps/default/keymap.c **** enum sofle_layers {
+   4:keyboards/sofle/keymaps/default/keymap.c ****     /* _M_XYZ = Mac Os, _W_XYZ = Win/Linux */
+   5:keyboards/sofle/keymaps/default/keymap.c ****     _QWERTY,
+   6:keyboards/sofle/keymaps/default/keymap.c ****     _COLEMAK,
+   7:keyboards/sofle/keymaps/default/keymap.c ****     _LOWER,
+   8:keyboards/sofle/keymaps/default/keymap.c ****     _RAISE,
+   9:keyboards/sofle/keymaps/default/keymap.c ****     _ADJUST,
+  10:keyboards/sofle/keymaps/default/keymap.c **** };
+  11:keyboards/sofle/keymaps/default/keymap.c **** 
+  12:keyboards/sofle/keymaps/default/keymap.c **** enum custom_keycodes {
+  13:keyboards/sofle/keymaps/default/keymap.c ****     KC_QWERTY = SAFE_RANGE,
+  14:keyboards/sofle/keymaps/default/keymap.c ****     KC_COLEMAK,
+  15:keyboards/sofle/keymaps/default/keymap.c ****     KC_LOWER,
+  16:keyboards/sofle/keymaps/default/keymap.c ****     KC_RAISE,
+  17:keyboards/sofle/keymaps/default/keymap.c ****     KC_ADJUST,
+  18:keyboards/sofle/keymaps/default/keymap.c ****     KC_PRVWD,
+  19:keyboards/sofle/keymaps/default/keymap.c ****     KC_NXTWD,
+  20:keyboards/sofle/keymaps/default/keymap.c ****     KC_LSTRT,
+  21:keyboards/sofle/keymaps/default/keymap.c ****     KC_LEND,
+  22:keyboards/sofle/keymaps/default/keymap.c ****     KC_DLINE
+  23:keyboards/sofle/keymaps/default/keymap.c **** };
+  24:keyboards/sofle/keymaps/default/keymap.c **** 
+  25:keyboards/sofle/keymaps/default/keymap.c **** 
+  26:keyboards/sofle/keymaps/default/keymap.c **** const uint16_t PROGMEM keymaps[][MATRIX_ROWS][MATRIX_COLS] = {
+  27:keyboards/sofle/keymaps/default/keymap.c **** /*
+  28:keyboards/sofle/keymaps/default/keymap.c ****  * QWERTY
+  29:keyboards/sofle/keymaps/default/keymap.c ****  * ,-----------------------------------------.                    ,--------------------------------
+  30:keyboards/sofle/keymaps/default/keymap.c ****  * |  `   |   1  |   2  |   3  |   4  |   5  |                    |   6  |   7  |   8  |   9  |   0
+  31:keyboards/sofle/keymaps/default/keymap.c ****  * |------+------+------+------+------+------|                    |------+------+------+------+----
+  32:keyboards/sofle/keymaps/default/keymap.c ****  * | ESC  |   Q  |   W  |   E  |   R  |   T  |                    |   Y  |   U  |   I  |   O  |   P
+  33:keyboards/sofle/keymaps/default/keymap.c ****  * |------+------+------+------+------+------|                    |------+------+------+------+----
+  34:keyboards/sofle/keymaps/default/keymap.c ****  * | Tab  |   A  |   S  |   D  |   F  |   G  |-------.    ,-------|   H  |   J  |   K  |   L  |   ;
+  35:keyboards/sofle/keymaps/default/keymap.c ****  * |------+------+------+------+------+------|       |    |       |------+------+------+------+----
+  36:keyboards/sofle/keymaps/default/keymap.c ****  * |LShift|   Z  |   X  |   C  |   V  |   B  |-------|    |-------|   N  |   M  |   ,  |   .  |   /
+  37:keyboards/sofle/keymaps/default/keymap.c ****  * `-----------------------------------------/       /     \      \--------------------------------
+  38:keyboards/sofle/keymaps/default/keymap.c ****  *            | LGUI | LAlt | LCTR |LOWER | /Enter  /       \Space \  |RAISE | RCTR | RAlt | RGUI |
+  39:keyboards/sofle/keymaps/default/keymap.c ****  *            |      |      |      |      |/       /         \      \ |      |      |      |      |
+  40:keyboards/sofle/keymaps/default/keymap.c ****  *            `----------------------------------'           '------''---------------------------'
+  41:keyboards/sofle/keymaps/default/keymap.c ****  */
+  42:keyboards/sofle/keymaps/default/keymap.c **** 
+  43:keyboards/sofle/keymaps/default/keymap.c **** [_QWERTY] = LAYOUT( \
+  44:keyboards/sofle/keymaps/default/keymap.c ****   KC_GRV,   KC_1,   KC_2,    KC_3,    KC_4,    KC_5,                     KC_6,    KC_7,    KC_8,   
+  45:keyboards/sofle/keymaps/default/keymap.c ****   KC_ESC,   KC_Q,   KC_W,    KC_E,    KC_R,    KC_T,                     KC_Y,    KC_U,    KC_I,   
+  46:keyboards/sofle/keymaps/default/keymap.c ****   KC_TAB,   KC_A,   KC_S,    KC_D,    KC_F,    KC_G,                     KC_H,    KC_J,    KC_K,   
+  47:keyboards/sofle/keymaps/default/keymap.c ****   KC_LSFT,  KC_Z,   KC_X,    KC_C,    KC_V,    KC_B, KC_MUTE,     XXXXXXX,KC_N,    KC_M, KC_COMM,  
+  48:keyboards/sofle/keymaps/default/keymap.c ****                  KC_LGUI,KC_LALT,KC_LCTRL, KC_LOWER, KC_ENT,      KC_SPC,  KC_RAISE, KC_RCTRL, KC_R
+  49:keyboards/sofle/keymaps/default/keymap.c **** ),
+  50:keyboards/sofle/keymaps/default/keymap.c **** /*
+  51:keyboards/sofle/keymaps/default/keymap.c ****  * COLEMAK
+  52:keyboards/sofle/keymaps/default/keymap.c ****  * ,-----------------------------------------.                    ,--------------------------------
+  53:keyboards/sofle/keymaps/default/keymap.c ****  * |  `   |   1  |   2  |   3  |   4  |   5  |                    |   6  |   7  |   8  |   9  |   0
+  54:keyboards/sofle/keymaps/default/keymap.c ****  * |------+------+------+------+------+------|                    |------+------+------+------+----
+  55:keyboards/sofle/keymaps/default/keymap.c ****  * | ESC  |   Q  |   W  |   F  |   P  |   G  |                    |   J  |   L  |   U  |   Y  |   ;
+  56:keyboards/sofle/keymaps/default/keymap.c ****  * |------+------+------+------+------+------|                    |------+------+------+------+----
+  57:keyboards/sofle/keymaps/default/keymap.c ****  * | TAB  |   A  |   R  |   S  |   T  |   D  |-------.    ,-------|   H  |   N  |   E  |   I  |   O
+  58:keyboards/sofle/keymaps/default/keymap.c ****  * |------+------+------+------+------+------|  MUTE |    |       |------+------+------+------+----
+  59:keyboards/sofle/keymaps/default/keymap.c ****  * |LShift|   Z  |   X  |   C  |   V  |   B  |-------|    |-------|   K  |   M  |   ,  |   .  |   /
+  60:keyboards/sofle/keymaps/default/keymap.c ****  * `-----------------------------------------/       /     \      \--------------------------------
+  61:keyboards/sofle/keymaps/default/keymap.c ****  *            | LGUI | LAlt | LCTR |LOWER | /Enter  /       \Space \  |RAISE | RCTR | RAlt | RGUI |
+  62:keyboards/sofle/keymaps/default/keymap.c ****  *            |      |      |      |      |/       /         \      \ |      |      |      |      |
+  63:keyboards/sofle/keymaps/default/keymap.c ****  *            `----------------------------------'           '------''---------------------------'
+  64:keyboards/sofle/keymaps/default/keymap.c ****  */
+  65:keyboards/sofle/keymaps/default/keymap.c **** 
+  66:keyboards/sofle/keymaps/default/keymap.c **** [_COLEMAK] = LAYOUT( \
+  67:keyboards/sofle/keymaps/default/keymap.c ****   KC_GRV,   KC_1,   KC_2,    KC_3,    KC_4,    KC_5,                      KC_6,    KC_7,    KC_8,  
+  68:keyboards/sofle/keymaps/default/keymap.c ****   KC_ESC,   KC_Q,   KC_W,    KC_F,    KC_P,    KC_G,                      KC_J,    KC_L,    KC_U,  
+  69:keyboards/sofle/keymaps/default/keymap.c ****   KC_TAB,   KC_A,   KC_R,    KC_S,    KC_T,    KC_D,                      KC_H,    KC_N,    KC_E,  
+  70:keyboards/sofle/keymaps/default/keymap.c ****   KC_LSFT,  KC_Z,   KC_X,    KC_C,    KC_V,    KC_B, KC_MUTE,      XXXXXXX,KC_K,    KC_M, KC_COMM, 
+  71:keyboards/sofle/keymaps/default/keymap.c ****                  KC_LGUI,KC_LALT,KC_LCTRL,KC_LOWER, KC_ENT,      KC_SPC,  KC_RAISE, KC_RCTRL, KC_RA
+  72:keyboards/sofle/keymaps/default/keymap.c **** ),
+  73:keyboards/sofle/keymaps/default/keymap.c **** /* LOWER
+  74:keyboards/sofle/keymaps/default/keymap.c ****  * ,-----------------------------------------.                    ,--------------------------------
+  75:keyboards/sofle/keymaps/default/keymap.c ****  * |      |  F1  |  F2  |  F3  |  F4  |  F5  |                    |  F6  |  F7  |  F8  |  F9  | F10
+  76:keyboards/sofle/keymaps/default/keymap.c ****  * |------+------+------+------+------+------|                    |------+------+------+------+----
+  77:keyboards/sofle/keymaps/default/keymap.c ****  * |  `   |   1  |   2  |   3  |   4  |   5  |                    |   6  |   7  |   8  |   9  |   0
+  78:keyboards/sofle/keymaps/default/keymap.c ****  * |------+------+------+------+------+------|                    |------+------+------+------+----
+  79:keyboards/sofle/keymaps/default/keymap.c ****  * | Tab  |   !  |   @  |   #  |   $  |   %  |-------.    ,-------|   ^  |   &  |   *  |   (  |   )
+  80:keyboards/sofle/keymaps/default/keymap.c ****  * |------+------+------+------+------+------|  MUTE |    |       |------+------+------+------+----
+  81:keyboards/sofle/keymaps/default/keymap.c ****  * | Shift|  =   |  -   |  +   |   {  |   }  |-------|    |-------|   [  |   ]  |   ;  |   :  |   \
+  82:keyboards/sofle/keymaps/default/keymap.c ****  * `-----------------------------------------/       /     \      \--------------------------------
+  83:keyboards/sofle/keymaps/default/keymap.c ****  *            | LGUI | LAlt | LCTR |LOWER | /Enter  /       \Space \  |RAISE | RCTR | RAlt | RGUI |
+  84:keyboards/sofle/keymaps/default/keymap.c ****  *            |      |      |      |      |/       /         \      \ |      |      |      |      |
+  85:keyboards/sofle/keymaps/default/keymap.c ****  *            `----------------------------------'           '------''---------------------------'
+  86:keyboards/sofle/keymaps/default/keymap.c ****  */
+  87:keyboards/sofle/keymaps/default/keymap.c **** [_LOWER] = LAYOUT( \
+  88:keyboards/sofle/keymaps/default/keymap.c ****   _______,   KC_F1,   KC_F2,   KC_F3,   KC_F4,   KC_F5,                       KC_F6,   KC_F7,   KC_
+  89:keyboards/sofle/keymaps/default/keymap.c ****   KC_GRV,    KC_1,    KC_2,    KC_3,    KC_4,    KC_5,                       KC_6,    KC_7,    KC_8
+  90:keyboards/sofle/keymaps/default/keymap.c ****   _______, KC_EXLM,   KC_AT, KC_HASH,  KC_DLR, KC_PERC,                       KC_CIRC, KC_AMPR, KC_
+  91:keyboards/sofle/keymaps/default/keymap.c ****   _______,  KC_EQL, KC_MINS, KC_PLUS, KC_LCBR, KC_RCBR, _______,       _______, KC_LBRC, KC_RBRC, K
+  92:keyboards/sofle/keymaps/default/keymap.c ****                        _______, _______, _______, _______, _______,       _______, _______, _______
+  93:keyboards/sofle/keymaps/default/keymap.c **** ),
+  94:keyboards/sofle/keymaps/default/keymap.c **** /* RAISE
+  95:keyboards/sofle/keymaps/default/keymap.c ****  * ,----------------------------------------.                    ,---------------------------------
+  96:keyboards/sofle/keymaps/default/keymap.c ****  * |      |      |      |      |      |      |                    |      |      |      |      |    
+  97:keyboards/sofle/keymaps/default/keymap.c ****  * |------+------+------+------+------+------|                    |------+------+------+------+----
+  98:keyboards/sofle/keymaps/default/keymap.c ****  * | Esc  | Ins  | Pscr | Menu |      |      |                    |      | PWrd |  Up  | NWrd | DLi
+  99:keyboards/sofle/keymaps/default/keymap.c ****  * |------+------+------+------+------+------|                    |------+------+------+------+----
+ 100:keyboards/sofle/keymaps/default/keymap.c ****  * | Tab  | LAt  | LCtl |LShift|      | Caps |-------.    ,-------|      | Left | Down | Rigth|  De
+ 101:keyboards/sofle/keymaps/default/keymap.c ****  * |------+------+------+------+------+------|  MUTE  |    |       |------+------+------+------+---
+ 102:keyboards/sofle/keymaps/default/keymap.c ****  * |Shift | Undo |  Cut | Copy | Paste|      |-------|    |-------|      | LStr |      | LEnd |    
+ 103:keyboards/sofle/keymaps/default/keymap.c ****  * `-----------------------------------------/       /     \      \--------------------------------
+ 104:keyboards/sofle/keymaps/default/keymap.c ****  *            | LGUI | LAlt | LCTR |LOWER | /Enter  /       \Space \  |RAISE | RCTR | RAlt | RGUI |
+ 105:keyboards/sofle/keymaps/default/keymap.c ****  *            |      |      |      |      |/       /         \      \ |      |      |      |      |
+ 106:keyboards/sofle/keymaps/default/keymap.c ****  *            `----------------------------------'           '------''---------------------------'
+ 107:keyboards/sofle/keymaps/default/keymap.c ****  */
+ 108:keyboards/sofle/keymaps/default/keymap.c **** [_RAISE] = LAYOUT( \
+ 109:keyboards/sofle/keymaps/default/keymap.c ****   _______, _______ , _______ , _______ , _______ , _______,                           _______,  ___
+ 110:keyboards/sofle/keymaps/default/keymap.c ****   _______,  KC_INS,  KC_PSCR,   KC_APP,  XXXXXXX, XXXXXXX,                        KC_PGUP, KC_PRVWD
+ 111:keyboards/sofle/keymaps/default/keymap.c ****   _______, KC_LALT,  KC_LCTL,  KC_LSFT,  XXXXXXX, KC_CAPS,                       KC_PGDN,  KC_LEFT,
+ 112:keyboards/sofle/keymaps/default/keymap.c ****   _______,KC_UNDO, KC_CUT, KC_COPY, KC_PASTE, XXXXXXX,  _______,       _______,  XXXXXXX, KC_LSTRT,
+ 113:keyboards/sofle/keymaps/default/keymap.c ****                          _______, _______, _______, _______, _______,       _______, _______, _____
+ 114:keyboards/sofle/keymaps/default/keymap.c **** ),
+ 115:keyboards/sofle/keymaps/default/keymap.c **** /* ADJUST
+ 116:keyboards/sofle/keymaps/default/keymap.c ****  * ,-----------------------------------------.                    ,--------------------------------
+ 117:keyboards/sofle/keymaps/default/keymap.c ****  * |      |      |      |      |      |      |                    |      |      |      |      |    
+ 118:keyboards/sofle/keymaps/default/keymap.c ****  * |------+------+------+------+------+------|                    |------+------+------+------+----
+ 119:keyboards/sofle/keymaps/default/keymap.c ****  * | RESET|      |QWERTY|COLEMAK|      |      |                    |      |      |      |      |   
+ 120:keyboards/sofle/keymaps/default/keymap.c ****  * |------+------+------+------+------+------|                    |------+------+------+------+----
+ 121:keyboards/sofle/keymaps/default/keymap.c ****  * |      |      |MACWIN|      |      |      |-------.    ,-------|      | VOLDO| MUTE | VOLUP|    
+ 122:keyboards/sofle/keymaps/default/keymap.c ****  * |------+------+------+------+------+------|  MUTE |    |       |------+------+------+------+----
+ 123:keyboards/sofle/keymaps/default/keymap.c ****  * |      |      |      |      |      |      |-------|    |-------|      | PREV | PLAY | NEXT |    
+ 124:keyboards/sofle/keymaps/default/keymap.c ****  * `-----------------------------------------/       /     \      \--------------------------------
+ 125:keyboards/sofle/keymaps/default/keymap.c ****  *            | LGUI | LAlt | LCTR |LOWER | /Enter  /       \Space \  |RAISE | RCTR | RAlt | RGUI |
+ 126:keyboards/sofle/keymaps/default/keymap.c ****  *            |      |      |      |      |/       /         \      \ |      |      |      |      |
+ 127:keyboards/sofle/keymaps/default/keymap.c ****  *            `----------------------------------'           '------''---------------------------'
+ 128:keyboards/sofle/keymaps/default/keymap.c ****  */
+ 129:keyboards/sofle/keymaps/default/keymap.c ****   [_ADJUST] = LAYOUT( \
+ 130:keyboards/sofle/keymaps/default/keymap.c ****   XXXXXXX , XXXXXXX,  XXXXXXX ,  XXXXXXX , XXXXXXX, XXXXXXX,                     XXXXXXX, XXXXXXX, 
+ 131:keyboards/sofle/keymaps/default/keymap.c ****   RESET  , XXXXXXX,KC_QWERTY,KC_COLEMAK,CG_TOGG,XXXXXXX,                     XXXXXXX, XXXXXXX, XXXX
+ 132:keyboards/sofle/keymaps/default/keymap.c ****   XXXXXXX , XXXXXXX,CG_TOGG, XXXXXXX,    XXXXXXX,  XXXXXXX,                     XXXXXXX, KC_VOLD, K
+ 133:keyboards/sofle/keymaps/default/keymap.c ****   XXXXXXX , XXXXXXX, XXXXXXX, XXXXXXX,    XXXXXXX,  XXXXXXX, XXXXXXX,     XXXXXXX, XXXXXXX, KC_MPRV
+ 134:keyboards/sofle/keymaps/default/keymap.c ****                    _______, _______, _______, _______, _______,     _______, _______, _______, ____
+ 135:keyboards/sofle/keymaps/default/keymap.c ****   )
+ 136:keyboards/sofle/keymaps/default/keymap.c **** };
+ 137:keyboards/sofle/keymaps/default/keymap.c **** 
+ 138:keyboards/sofle/keymaps/default/keymap.c **** #ifdef OLED_ENABLE
+ 139:keyboards/sofle/keymaps/default/keymap.c **** static void render_logo(void) {
+ 140:keyboards/sofle/keymaps/default/keymap.c ****     static const char PROGMEM qmk_logo[] = {
+ 141:keyboards/sofle/keymaps/default/keymap.c ****         0x80, 0x81, 0x82, 0x83, 0x84, 0x85, 0x86, 0x87, 0x88, 0x89, 0x8A, 0x8B, 0x8C, 0x8D, 0x8E, 0
+ 142:keyboards/sofle/keymaps/default/keymap.c ****         0xA0, 0xA1, 0xA2, 0xA3, 0xA4, 0xA5, 0xA6, 0xA7, 0xA8, 0xA9, 0xAA, 0xAB, 0xAC, 0xAD, 0xAE, 0
+ 143:keyboards/sofle/keymaps/default/keymap.c ****         0xC0, 0xC1, 0xC2, 0xC3, 0xC4, 0xC5, 0xC6, 0xC7, 0xC8, 0xC9, 0xCA, 0xCB, 0xCC, 0xCD, 0xCE, 0
+ 144:keyboards/sofle/keymaps/default/keymap.c ****     };
+ 145:keyboards/sofle/keymaps/default/keymap.c **** 
+ 146:keyboards/sofle/keymaps/default/keymap.c ****     oled_write_P(qmk_logo, false);
+ 147:keyboards/sofle/keymaps/default/keymap.c **** }
+ 148:keyboards/sofle/keymaps/default/keymap.c **** void oled_task_user(void) {
+  16               		.loc 1 148 27 view -0
+  17               		.cfi_startproc
+  18               	/* prologue: function */
+  19               	/* frame size = 0 */
+  20               	/* stack size = 0 */
+  21               	.L__stack_usage = 0
+ 149:keyboards/sofle/keymaps/default/keymap.c ****     if (is_keyboard_left()) {
+  22               		.loc 1 149 5 view .LVU1
+  23               		.loc 1 149 9 is_stmt 0 view .LVU2
+  24 0000 0E94 0000 		call is_keyboard_left
+  25               	.LVL0:
+  26               		.loc 1 149 8 view .LVU3
+  27 0004 8823      		tst r24
+  28 0006 01F0      		breq .L2
+ 150:keyboards/sofle/keymaps/default/keymap.c ****         render_logo();  // Renders a static logo
+  29               		.loc 1 150 9 is_stmt 1 view .LVU4
+  30               	.LBB4:
+  31               	.LBI4:
+ 139:keyboards/sofle/keymaps/default/keymap.c ****     static const char PROGMEM qmk_logo[] = {
+  32               		.loc 1 139 13 view .LVU5
+  33               	.LBB5:
+ 140:keyboards/sofle/keymaps/default/keymap.c ****         0x80, 0x81, 0x82, 0x83, 0x84, 0x85, 0x86, 0x87, 0x88, 0x89, 0x8A, 0x8B, 0x8C, 0x8D, 0x8E, 0
+  34               		.loc 1 140 5 view .LVU6
+ 146:keyboards/sofle/keymaps/default/keymap.c **** }
+  35               		.loc 1 146 5 view .LVU7
+  36 0008 60E0      		ldi r22,0
+  37 000a 80E0      		ldi r24,lo8(qmk_logo.0)
+  38 000c 90E0      		ldi r25,hi8(qmk_logo.0)
+  39 000e 0C94 0000 		jmp oled_write_P
+  40               	.LVL1:
+  41               	.L2:
+  42               	.LBE5:
+  43               	.LBE4:
+ 151:keyboards/sofle/keymaps/default/keymap.c ****     } else {
+ 152:keyboards/sofle/keymaps/default/keymap.c ****         oled_scroll_left();  // Turns on scrolling
+  44               		.loc 1 152 9 view .LVU8
+  45 0012 0C94 0000 		jmp oled_scroll_left
+  46               	.LVL2:
+  47               		.cfi_endproc
+  48               	.LFE27:
+  50               		.section	.text.process_record_user,"ax",@progbits
+  51               	.global	process_record_user
+  53               	process_record_user:
+  54               	.LVL3:
+  55               	.LFB28:
+ 153:keyboards/sofle/keymaps/default/keymap.c ****     }
+ 154:keyboards/sofle/keymaps/default/keymap.c **** }
+ 155:keyboards/sofle/keymaps/default/keymap.c **** 
+ 156:keyboards/sofle/keymaps/default/keymap.c **** #endif
+ 157:keyboards/sofle/keymaps/default/keymap.c **** 
+ 158:keyboards/sofle/keymaps/default/keymap.c **** bool process_record_user(uint16_t keycode, keyrecord_t *record) {
+  56               		.loc 1 158 65 view -0
+  57               		.cfi_startproc
+  58               		.loc 1 158 65 is_stmt 0 view .LVU10
+  59 0000 CF93      		push r28
+  60               	.LCFI0:
+  61               		.cfi_def_cfa_offset 3
+  62               		.cfi_offset 28, -2
+  63               	/* prologue: function */
+  64               	/* frame size = 0 */
+  65               	/* stack size = 1 */
+  66               	.L__stack_usage = 1
+  67 0002 FC01      		movw r30,r24
+  68 0004 DB01      		movw r26,r22
+ 159:keyboards/sofle/keymaps/default/keymap.c ****     switch (keycode) {
+  69               		.loc 1 159 5 is_stmt 1 view .LVU11
+  70 0006 ED36      		cpi r30,109
+  71 0008 8DE5      		ldi r24,93
+  72 000a F807      		cpc r31,r24
+  73               	.LVL4:
+  74               		.loc 1 159 5 is_stmt 0 view .LVU12
+  75 000c 00F4      		brsh .L38
+  76 000e E336      		cpi r30,99
+  77 0010 8DE5      		ldi r24,93
+  78 0012 F807      		cpc r31,r24
+  79 0014 00F4      		brsh .L5
+  80 0016 EC37      		cpi r30,124
+  81 0018 F105      		cpc r31,__zero_reg__
+  82 001a 01F4      		brne .+2
+  83 001c 00C0      		rjmp .L6
+  84 001e 00F4      		brsh .L7
+  85 0020 EA37      		cpi r30,122
+  86 0022 F105      		cpc r31,__zero_reg__
+  87 0024 01F4      		brne .+2
+  88 0026 00C0      		rjmp .L8
+  89 0028 EB37      		cpi r30,123
+  90 002a F105      		cpc r31,__zero_reg__
+  91 002c 01F4      		brne .+2
+  92 002e 00C0      		rjmp .L9
+  93               	.LVL5:
+  94               	.L38:
+  95               		.loc 1 159 5 view .LVU13
+  96 0030 C1E0      		ldi r28,lo8(1)
+  97 0032 00C0      		rjmp .L3
+  98               	.LVL6:
+  99               	.L5:
+ 100               		.loc 1 159 5 view .LVU14
+ 101 0034 E456      		subi r30,100
+ 102 0036 FD45      		sbci r31,93
+ 103               	.LVL7:
+ 104               		.loc 1 159 5 view .LVU15
+ 105 0038 1296      		adiw r26,2
+ 106 003a CC91      		ld r28,X
+ 107 003c E930      		cpi r30,9
+ 108 003e F105      		cpc r31,__zero_reg__
+ 109 0040 00F4      		brsh .L10
+ 110 0042 E050      		subi r30,lo8(-(gs(.L12)))
+ 111 0044 F040      		sbci r31,hi8(-(gs(.L12)))
+ 112               	.LVL8:
+ 113               		.loc 1 159 5 view .LVU16
+ 114 0046 0C94 0000 		jmp __tablejump2__
+ 115               		.section	.jumptables.gcc.process_record_user,"a",@progbits
+ 116               		.p2align	1
+ 117               	.L12:
+ 118 0000 0000      		.word gs(.L20)
+ 119 0002 0000      		.word gs(.L19)
+ 120 0004 0000      		.word gs(.L18)
+ 121 0006 0000      		.word gs(.L17)
+ 122 0008 0000      		.word gs(.L16)
+ 123 000a 0000      		.word gs(.L15)
+ 124 000c 0000      		.word gs(.L14)
+ 125 000e 0000      		.word gs(.L13)
+ 126 0010 0000      		.word gs(.L11)
+ 127               		.section	.text.process_record_user
+ 128               	.LVL9:
+ 129               	.L7:
+ 130               		.loc 1 159 5 view .LVU17
+ 131 004a ED37      		cpi r30,125
+ 132 004c F105      		cpc r31,__zero_reg__
+ 133 004e 01F4      		brne .L38
+ 160:keyboards/sofle/keymaps/default/keymap.c ****         case KC_QWERTY:
+ 161:keyboards/sofle/keymaps/default/keymap.c ****             if (record->event.pressed) {
+ 162:keyboards/sofle/keymaps/default/keymap.c ****                 set_single_persistent_default_layer(_QWERTY);
+ 163:keyboards/sofle/keymaps/default/keymap.c ****             }
+ 164:keyboards/sofle/keymaps/default/keymap.c ****             return false;
+ 165:keyboards/sofle/keymaps/default/keymap.c ****         case KC_COLEMAK:
+ 166:keyboards/sofle/keymaps/default/keymap.c ****             if (record->event.pressed) {
+ 167:keyboards/sofle/keymaps/default/keymap.c ****                 set_single_persistent_default_layer(_COLEMAK);
+ 168:keyboards/sofle/keymaps/default/keymap.c ****             }
+ 169:keyboards/sofle/keymaps/default/keymap.c ****             return false;
+ 170:keyboards/sofle/keymaps/default/keymap.c ****         case KC_LOWER:
+ 171:keyboards/sofle/keymaps/default/keymap.c ****             if (record->event.pressed) {
+ 172:keyboards/sofle/keymaps/default/keymap.c ****                 layer_on(_LOWER);
+ 173:keyboards/sofle/keymaps/default/keymap.c ****                 update_tri_layer(_LOWER, _RAISE, _ADJUST);
+ 174:keyboards/sofle/keymaps/default/keymap.c ****             } else {
+ 175:keyboards/sofle/keymaps/default/keymap.c ****                 layer_off(_LOWER);
+ 176:keyboards/sofle/keymaps/default/keymap.c ****                 update_tri_layer(_LOWER, _RAISE, _ADJUST);
+ 177:keyboards/sofle/keymaps/default/keymap.c ****             }
+ 178:keyboards/sofle/keymaps/default/keymap.c ****             return false;
+ 179:keyboards/sofle/keymaps/default/keymap.c ****         case KC_RAISE:
+ 180:keyboards/sofle/keymaps/default/keymap.c ****             if (record->event.pressed) {
+ 181:keyboards/sofle/keymaps/default/keymap.c ****                 layer_on(_RAISE);
+ 182:keyboards/sofle/keymaps/default/keymap.c ****                 update_tri_layer(_LOWER, _RAISE, _ADJUST);
+ 183:keyboards/sofle/keymaps/default/keymap.c ****             } else {
+ 184:keyboards/sofle/keymaps/default/keymap.c ****                 layer_off(_RAISE);
+ 185:keyboards/sofle/keymaps/default/keymap.c ****                 update_tri_layer(_LOWER, _RAISE, _ADJUST);
+ 186:keyboards/sofle/keymaps/default/keymap.c ****             }
+ 187:keyboards/sofle/keymaps/default/keymap.c ****             return false;
+ 188:keyboards/sofle/keymaps/default/keymap.c ****         case KC_ADJUST:
+ 189:keyboards/sofle/keymaps/default/keymap.c ****             if (record->event.pressed) {
+ 190:keyboards/sofle/keymaps/default/keymap.c ****                 layer_on(_ADJUST);
+ 191:keyboards/sofle/keymaps/default/keymap.c ****             } else {
+ 192:keyboards/sofle/keymaps/default/keymap.c ****                 layer_off(_ADJUST);
+ 193:keyboards/sofle/keymaps/default/keymap.c ****             }
+ 194:keyboards/sofle/keymaps/default/keymap.c ****             return false;
+ 195:keyboards/sofle/keymaps/default/keymap.c ****         case KC_PRVWD:
+ 196:keyboards/sofle/keymaps/default/keymap.c ****             if (record->event.pressed) {
+ 197:keyboards/sofle/keymaps/default/keymap.c ****                 if (keymap_config.swap_lctl_lgui) {
+ 198:keyboards/sofle/keymaps/default/keymap.c ****                     register_mods(mod_config(MOD_LALT));
+ 199:keyboards/sofle/keymaps/default/keymap.c ****                     register_code(KC_LEFT);
+ 200:keyboards/sofle/keymaps/default/keymap.c ****                 } else {
+ 201:keyboards/sofle/keymaps/default/keymap.c ****                     register_mods(mod_config(MOD_LCTL));
+ 202:keyboards/sofle/keymaps/default/keymap.c ****                     register_code(KC_LEFT);
+ 203:keyboards/sofle/keymaps/default/keymap.c ****                 }
+ 204:keyboards/sofle/keymaps/default/keymap.c ****             } else {
+ 205:keyboards/sofle/keymaps/default/keymap.c ****                 if (keymap_config.swap_lctl_lgui) {
+ 206:keyboards/sofle/keymaps/default/keymap.c ****                     unregister_mods(mod_config(MOD_LALT));
+ 207:keyboards/sofle/keymaps/default/keymap.c ****                     unregister_code(KC_LEFT);
+ 208:keyboards/sofle/keymaps/default/keymap.c ****                 } else {
+ 209:keyboards/sofle/keymaps/default/keymap.c ****                     unregister_mods(mod_config(MOD_LCTL));
+ 210:keyboards/sofle/keymaps/default/keymap.c ****                     unregister_code(KC_LEFT);
+ 211:keyboards/sofle/keymaps/default/keymap.c ****                 }
+ 212:keyboards/sofle/keymaps/default/keymap.c ****             }
+ 213:keyboards/sofle/keymaps/default/keymap.c ****             break;
+ 214:keyboards/sofle/keymaps/default/keymap.c ****         case KC_NXTWD:
+ 215:keyboards/sofle/keymaps/default/keymap.c ****              if (record->event.pressed) {
+ 216:keyboards/sofle/keymaps/default/keymap.c ****                 if (keymap_config.swap_lctl_lgui) {
+ 217:keyboards/sofle/keymaps/default/keymap.c ****                     register_mods(mod_config(MOD_LALT));
+ 218:keyboards/sofle/keymaps/default/keymap.c ****                     register_code(KC_RIGHT);
+ 219:keyboards/sofle/keymaps/default/keymap.c ****                 } else {
+ 220:keyboards/sofle/keymaps/default/keymap.c ****                     register_mods(mod_config(MOD_LCTL));
+ 221:keyboards/sofle/keymaps/default/keymap.c ****                     register_code(KC_RIGHT);
+ 222:keyboards/sofle/keymaps/default/keymap.c ****                 }
+ 223:keyboards/sofle/keymaps/default/keymap.c ****             } else {
+ 224:keyboards/sofle/keymaps/default/keymap.c ****                 if (keymap_config.swap_lctl_lgui) {
+ 225:keyboards/sofle/keymaps/default/keymap.c ****                     unregister_mods(mod_config(MOD_LALT));
+ 226:keyboards/sofle/keymaps/default/keymap.c ****                     unregister_code(KC_RIGHT);
+ 227:keyboards/sofle/keymaps/default/keymap.c ****                 } else {
+ 228:keyboards/sofle/keymaps/default/keymap.c ****                     unregister_mods(mod_config(MOD_LCTL));
+ 229:keyboards/sofle/keymaps/default/keymap.c ****                     unregister_code(KC_RIGHT);
+ 230:keyboards/sofle/keymaps/default/keymap.c ****                 }
+ 231:keyboards/sofle/keymaps/default/keymap.c ****             }
+ 232:keyboards/sofle/keymaps/default/keymap.c ****             break;
+ 233:keyboards/sofle/keymaps/default/keymap.c ****         case KC_LSTRT:
+ 234:keyboards/sofle/keymaps/default/keymap.c ****             if (record->event.pressed) {
+ 235:keyboards/sofle/keymaps/default/keymap.c ****                 if (keymap_config.swap_lctl_lgui) {
+ 236:keyboards/sofle/keymaps/default/keymap.c ****                      //CMD-arrow on Mac, but we have CTL and GUI swapped
+ 237:keyboards/sofle/keymaps/default/keymap.c ****                     register_mods(mod_config(MOD_LCTL));
+ 238:keyboards/sofle/keymaps/default/keymap.c ****                     register_code(KC_LEFT);
+ 239:keyboards/sofle/keymaps/default/keymap.c ****                 } else {
+ 240:keyboards/sofle/keymaps/default/keymap.c ****                     register_code(KC_HOME);
+ 241:keyboards/sofle/keymaps/default/keymap.c ****                 }
+ 242:keyboards/sofle/keymaps/default/keymap.c ****             } else {
+ 243:keyboards/sofle/keymaps/default/keymap.c ****                 if (keymap_config.swap_lctl_lgui) {
+ 244:keyboards/sofle/keymaps/default/keymap.c ****                     unregister_mods(mod_config(MOD_LCTL));
+ 245:keyboards/sofle/keymaps/default/keymap.c ****                     unregister_code(KC_LEFT);
+ 246:keyboards/sofle/keymaps/default/keymap.c ****                 } else {
+ 247:keyboards/sofle/keymaps/default/keymap.c ****                     unregister_code(KC_HOME);
+ 248:keyboards/sofle/keymaps/default/keymap.c ****                 }
+ 249:keyboards/sofle/keymaps/default/keymap.c ****             }
+ 250:keyboards/sofle/keymaps/default/keymap.c ****             break;
+ 251:keyboards/sofle/keymaps/default/keymap.c ****         case KC_LEND:
+ 252:keyboards/sofle/keymaps/default/keymap.c ****             if (record->event.pressed) {
+ 253:keyboards/sofle/keymaps/default/keymap.c ****                 if (keymap_config.swap_lctl_lgui) {
+ 254:keyboards/sofle/keymaps/default/keymap.c ****                     //CMD-arrow on Mac, but we have CTL and GUI swapped
+ 255:keyboards/sofle/keymaps/default/keymap.c ****                     register_mods(mod_config(MOD_LCTL));
+ 256:keyboards/sofle/keymaps/default/keymap.c ****                     register_code(KC_RIGHT);
+ 257:keyboards/sofle/keymaps/default/keymap.c ****                 } else {
+ 258:keyboards/sofle/keymaps/default/keymap.c ****                     register_code(KC_END);
+ 259:keyboards/sofle/keymaps/default/keymap.c ****                 }
+ 260:keyboards/sofle/keymaps/default/keymap.c ****             } else {
+ 261:keyboards/sofle/keymaps/default/keymap.c ****                 if (keymap_config.swap_lctl_lgui) {
+ 262:keyboards/sofle/keymaps/default/keymap.c ****                     unregister_mods(mod_config(MOD_LCTL));
+ 263:keyboards/sofle/keymaps/default/keymap.c ****                     unregister_code(KC_RIGHT);
+ 264:keyboards/sofle/keymaps/default/keymap.c ****                 } else {
+ 265:keyboards/sofle/keymaps/default/keymap.c ****                     unregister_code(KC_END);
+ 266:keyboards/sofle/keymaps/default/keymap.c ****                 }
+ 267:keyboards/sofle/keymaps/default/keymap.c ****             }
+ 268:keyboards/sofle/keymaps/default/keymap.c ****             break;
+ 269:keyboards/sofle/keymaps/default/keymap.c ****         case KC_DLINE:
+ 270:keyboards/sofle/keymaps/default/keymap.c ****             if (record->event.pressed) {
+ 271:keyboards/sofle/keymaps/default/keymap.c ****                 register_mods(mod_config(MOD_LCTL));
+ 272:keyboards/sofle/keymaps/default/keymap.c ****                 register_code(KC_BSPC);
+ 273:keyboards/sofle/keymaps/default/keymap.c ****             } else {
+ 274:keyboards/sofle/keymaps/default/keymap.c ****                 unregister_mods(mod_config(MOD_LCTL));
+ 275:keyboards/sofle/keymaps/default/keymap.c ****                 unregister_code(KC_BSPC);
+ 276:keyboards/sofle/keymaps/default/keymap.c ****             }
+ 277:keyboards/sofle/keymaps/default/keymap.c ****             break;
+ 278:keyboards/sofle/keymaps/default/keymap.c ****         case KC_COPY:
+ 279:keyboards/sofle/keymaps/default/keymap.c ****             if (record->event.pressed) {
+ 280:keyboards/sofle/keymaps/default/keymap.c ****                 register_mods(mod_config(MOD_LCTL));
+ 281:keyboards/sofle/keymaps/default/keymap.c ****                 register_code(KC_C);
+ 282:keyboards/sofle/keymaps/default/keymap.c ****             } else {
+ 283:keyboards/sofle/keymaps/default/keymap.c ****                 unregister_mods(mod_config(MOD_LCTL));
+ 284:keyboards/sofle/keymaps/default/keymap.c ****                 unregister_code(KC_C);
+ 285:keyboards/sofle/keymaps/default/keymap.c ****             }
+ 286:keyboards/sofle/keymaps/default/keymap.c ****             return false;
+ 287:keyboards/sofle/keymaps/default/keymap.c ****         case KC_PASTE:
+ 288:keyboards/sofle/keymaps/default/keymap.c ****             if (record->event.pressed) {
+ 134               		.loc 1 288 13 is_stmt 1 view .LVU18
+ 135               		.loc 1 288 30 is_stmt 0 view .LVU19
+ 136 0050 1296      		adiw r26,2
+ 137 0052 CC91      		ld r28,X
+ 289:keyboards/sofle/keymaps/default/keymap.c ****                 register_mods(mod_config(MOD_LCTL));
+ 138               		.loc 1 289 17 view .LVU20
+ 139 0054 81E0      		ldi r24,lo8(1)
+ 288:keyboards/sofle/keymaps/default/keymap.c ****                 register_mods(mod_config(MOD_LCTL));
+ 140               		.loc 1 288 16 view .LVU21
+ 141 0056 CC23      		tst r28
+ 142 0058 01F4      		brne .+2
+ 143 005a 00C0      		rjmp .L35
+ 144               		.loc 1 289 17 is_stmt 1 view .LVU22
+ 145 005c 0E94 0000 		call mod_config
+ 146               	.LVL10:
+ 147               		.loc 1 289 17 is_stmt 0 view .LVU23
+ 148 0060 0E94 0000 		call register_mods
+ 149               	.LVL11:
+ 290:keyboards/sofle/keymaps/default/keymap.c ****                 register_code(KC_V);
+ 150               		.loc 1 290 17 is_stmt 1 view .LVU24
+ 151 0064 89E1      		ldi r24,lo8(25)
+ 152 0066 00C0      		rjmp .L58
+ 153               	.LVL12:
+ 154               	.L10:
+ 161:keyboards/sofle/keymaps/default/keymap.c ****                 set_single_persistent_default_layer(_QWERTY);
+ 155               		.loc 1 161 13 view .LVU25
+ 162:keyboards/sofle/keymaps/default/keymap.c ****             }
+ 156               		.loc 1 162 17 is_stmt 0 view .LVU26
+ 157 0068 80E0      		ldi r24,0
+ 161:keyboards/sofle/keymaps/default/keymap.c ****                 set_single_persistent_default_layer(_QWERTY);
+ 158               		.loc 1 161 16 view .LVU27
+ 159 006a C111      		cpse r28,__zero_reg__
+ 160 006c 00C0      		rjmp .L61
+ 161               	.LVL13:
+ 162               	.L3:
+ 291:keyboards/sofle/keymaps/default/keymap.c ****             } else {
+ 292:keyboards/sofle/keymaps/default/keymap.c ****                 unregister_mods(mod_config(MOD_LCTL));
+ 293:keyboards/sofle/keymaps/default/keymap.c ****                 unregister_code(KC_V);
+ 294:keyboards/sofle/keymaps/default/keymap.c ****             }
+ 295:keyboards/sofle/keymaps/default/keymap.c ****             return false;
+ 296:keyboards/sofle/keymaps/default/keymap.c ****         case KC_CUT:
+ 297:keyboards/sofle/keymaps/default/keymap.c ****             if (record->event.pressed) {
+ 298:keyboards/sofle/keymaps/default/keymap.c ****                 register_mods(mod_config(MOD_LCTL));
+ 299:keyboards/sofle/keymaps/default/keymap.c ****                 register_code(KC_X);
+ 300:keyboards/sofle/keymaps/default/keymap.c ****             } else {
+ 301:keyboards/sofle/keymaps/default/keymap.c ****                 unregister_mods(mod_config(MOD_LCTL));
+ 302:keyboards/sofle/keymaps/default/keymap.c ****                 unregister_code(KC_X);
+ 303:keyboards/sofle/keymaps/default/keymap.c ****             }
+ 304:keyboards/sofle/keymaps/default/keymap.c ****             return false;
+ 305:keyboards/sofle/keymaps/default/keymap.c ****             break;
+ 306:keyboards/sofle/keymaps/default/keymap.c ****         case KC_UNDO:
+ 307:keyboards/sofle/keymaps/default/keymap.c ****             if (record->event.pressed) {
+ 308:keyboards/sofle/keymaps/default/keymap.c ****                 register_mods(mod_config(MOD_LCTL));
+ 309:keyboards/sofle/keymaps/default/keymap.c ****                 register_code(KC_Z);
+ 310:keyboards/sofle/keymaps/default/keymap.c ****             } else {
+ 311:keyboards/sofle/keymaps/default/keymap.c ****                 unregister_mods(mod_config(MOD_LCTL));
+ 312:keyboards/sofle/keymaps/default/keymap.c ****                 unregister_code(KC_Z);
+ 313:keyboards/sofle/keymaps/default/keymap.c ****             }
+ 314:keyboards/sofle/keymaps/default/keymap.c ****             return false;
+ 315:keyboards/sofle/keymaps/default/keymap.c ****             break;
+ 316:keyboards/sofle/keymaps/default/keymap.c ****             }
+ 317:keyboards/sofle/keymaps/default/keymap.c ****     return true;
+ 318:keyboards/sofle/keymaps/default/keymap.c **** }
+ 163               		.loc 1 318 1 view .LVU28
+ 164 006e 8C2F      		mov r24,r28
+ 165               	/* epilogue start */
+ 166 0070 CF91      		pop r28
+ 167 0072 0895      		ret
+ 168               	.LVL14:
+ 169               	.L20:
+ 166:keyboards/sofle/keymaps/default/keymap.c ****                 set_single_persistent_default_layer(_COLEMAK);
+ 170               		.loc 1 166 13 is_stmt 1 view .LVU29
+ 166:keyboards/sofle/keymaps/default/keymap.c ****                 set_single_persistent_default_layer(_COLEMAK);
+ 171               		.loc 1 166 16 is_stmt 0 view .LVU30
+ 172 0074 CC23      		tst r28
+ 173 0076 01F0      		breq .L3
+ 167:keyboards/sofle/keymaps/default/keymap.c ****             }
+ 174               		.loc 1 167 17 is_stmt 1 view .LVU31
+ 175 0078 81E0      		ldi r24,lo8(1)
+ 176               	.L61:
+ 177 007a 0E94 0000 		call set_single_persistent_default_layer
+ 178               	.LVL15:
+ 179               	.L59:
+ 314:keyboards/sofle/keymaps/default/keymap.c ****             break;
+ 180               		.loc 1 314 20 is_stmt 0 view .LVU32
+ 181 007e C0E0      		ldi r28,0
+ 182 0080 00C0      		rjmp .L3
+ 183               	.LVL16:
+ 184               	.L19:
+ 171:keyboards/sofle/keymaps/default/keymap.c ****                 layer_on(_LOWER);
+ 185               		.loc 1 171 13 is_stmt 1 view .LVU33
+ 172:keyboards/sofle/keymaps/default/keymap.c ****                 update_tri_layer(_LOWER, _RAISE, _ADJUST);
+ 186               		.loc 1 172 17 is_stmt 0 view .LVU34
+ 187 0082 82E0      		ldi r24,lo8(2)
+ 188               	.L66:
+ 180:keyboards/sofle/keymaps/default/keymap.c ****                 layer_on(_RAISE);
+ 189               		.loc 1 180 16 view .LVU35
+ 190 0084 CC23      		tst r28
+ 191 0086 01F0      		breq .L23
+ 181:keyboards/sofle/keymaps/default/keymap.c ****                 update_tri_layer(_LOWER, _RAISE, _ADJUST);
+ 192               		.loc 1 181 17 is_stmt 1 view .LVU36
+ 193 0088 0E94 0000 		call layer_on
+ 194               	.LVL17:
+ 182:keyboards/sofle/keymaps/default/keymap.c ****             } else {
+ 195               		.loc 1 182 17 view .LVU37
+ 196 008c 44E0      		ldi r20,lo8(4)
+ 197 008e 63E0      		ldi r22,lo8(3)
+ 198 0090 82E0      		ldi r24,lo8(2)
+ 199 0092 0E94 0000 		call update_tri_layer
+ 200               	.LVL18:
+ 201 0096 00C0      		rjmp .L59
+ 202               	.LVL19:
+ 203               	.L18:
+ 180:keyboards/sofle/keymaps/default/keymap.c ****                 layer_on(_RAISE);
+ 204               		.loc 1 180 13 view .LVU38
+ 181:keyboards/sofle/keymaps/default/keymap.c ****                 update_tri_layer(_LOWER, _RAISE, _ADJUST);
+ 205               		.loc 1 181 17 is_stmt 0 view .LVU39
+ 206 0098 83E0      		ldi r24,lo8(3)
+ 207 009a 00C0      		rjmp .L66
+ 208               	.L23:
+ 184:keyboards/sofle/keymaps/default/keymap.c ****                 update_tri_layer(_LOWER, _RAISE, _ADJUST);
+ 209               		.loc 1 184 17 is_stmt 1 view .LVU40
+ 210 009c 0E94 0000 		call layer_off
+ 211               	.LVL20:
+ 185:keyboards/sofle/keymaps/default/keymap.c ****             }
+ 212               		.loc 1 185 17 view .LVU41
+ 213 00a0 44E0      		ldi r20,lo8(4)
+ 214 00a2 63E0      		ldi r22,lo8(3)
+ 215 00a4 82E0      		ldi r24,lo8(2)
+ 216 00a6 0E94 0000 		call update_tri_layer
+ 217               	.LVL21:
+ 218 00aa 00C0      		rjmp .L3
+ 219               	.LVL22:
+ 220               	.L17:
+ 189:keyboards/sofle/keymaps/default/keymap.c ****                 layer_on(_ADJUST);
+ 221               		.loc 1 189 13 view .LVU42
+ 190:keyboards/sofle/keymaps/default/keymap.c ****             } else {
+ 222               		.loc 1 190 17 is_stmt 0 view .LVU43
+ 223 00ac 84E0      		ldi r24,lo8(4)
+ 189:keyboards/sofle/keymaps/default/keymap.c ****                 layer_on(_ADJUST);
+ 224               		.loc 1 189 16 view .LVU44
+ 225 00ae CC23      		tst r28
+ 226 00b0 01F0      		breq .L24
+ 190:keyboards/sofle/keymaps/default/keymap.c ****             } else {
+ 227               		.loc 1 190 17 is_stmt 1 view .LVU45
+ 228 00b2 0E94 0000 		call layer_on
+ 229               	.LVL23:
+ 190:keyboards/sofle/keymaps/default/keymap.c ****             } else {
+ 230               		.loc 1 190 17 is_stmt 0 view .LVU46
+ 231 00b6 00C0      		rjmp .L59
+ 232               	.LVL24:
+ 233               	.L24:
+ 192:keyboards/sofle/keymaps/default/keymap.c ****             }
+ 234               		.loc 1 192 17 is_stmt 1 view .LVU47
+ 235 00b8 0E94 0000 		call layer_off
+ 236               	.LVL25:
+ 192:keyboards/sofle/keymaps/default/keymap.c ****             }
+ 237               		.loc 1 192 17 is_stmt 0 view .LVU48
+ 238 00bc 00C0      		rjmp .L3
+ 239               	.LVL26:
+ 240               	.L16:
+ 196:keyboards/sofle/keymaps/default/keymap.c ****                 if (keymap_config.swap_lctl_lgui) {
+ 241               		.loc 1 196 13 is_stmt 1 view .LVU49
+ 197:keyboards/sofle/keymaps/default/keymap.c ****                     register_mods(mod_config(MOD_LALT));
+ 242               		.loc 1 197 21 is_stmt 0 view .LVU50
+ 243 00be 8091 0000 		lds r24,keymap_config+1
+ 244 00c2 8170      		andi r24,lo8(1)
+ 196:keyboards/sofle/keymaps/default/keymap.c ****                 if (keymap_config.swap_lctl_lgui) {
+ 245               		.loc 1 196 16 view .LVU51
+ 246 00c4 CC23      		tst r28
+ 247 00c6 01F0      		breq .L25
+ 197:keyboards/sofle/keymaps/default/keymap.c ****                     register_mods(mod_config(MOD_LALT));
+ 248               		.loc 1 197 17 is_stmt 1 view .LVU52
+ 197:keyboards/sofle/keymaps/default/keymap.c ****                     register_mods(mod_config(MOD_LALT));
+ 249               		.loc 1 197 20 is_stmt 0 view .LVU53
+ 250 00c8 8823      		tst r24
+ 251 00ca 01F0      		breq .L26
+ 198:keyboards/sofle/keymaps/default/keymap.c ****                     register_code(KC_LEFT);
+ 252               		.loc 1 198 21 is_stmt 1 view .LVU54
+ 253 00cc 84E0      		ldi r24,lo8(4)
+ 254 00ce 0E94 0000 		call mod_config
+ 255               	.LVL27:
+ 198:keyboards/sofle/keymaps/default/keymap.c ****                     register_code(KC_LEFT);
+ 256               		.loc 1 198 21 is_stmt 0 view .LVU55
+ 257 00d2 0E94 0000 		call register_mods
+ 258               	.LVL28:
+ 199:keyboards/sofle/keymaps/default/keymap.c ****                 } else {
+ 259               		.loc 1 199 21 is_stmt 1 view .LVU56
+ 260 00d6 80E5      		ldi r24,lo8(80)
+ 261               	.L60:
+ 272:keyboards/sofle/keymaps/default/keymap.c ****             } else {
+ 262               		.loc 1 272 17 is_stmt 0 view .LVU57
+ 263 00d8 0E94 0000 		call register_code
+ 264               	.LVL29:
+ 265 00dc 00C0      		rjmp .L3
+ 266               	.LVL30:
+ 267               	.L26:
+ 201:keyboards/sofle/keymaps/default/keymap.c ****                     register_code(KC_LEFT);
+ 268               		.loc 1 201 21 is_stmt 1 view .LVU58
+ 269 00de 81E0      		ldi r24,lo8(1)
+ 270 00e0 0E94 0000 		call mod_config
+ 271               	.LVL31:
+ 201:keyboards/sofle/keymaps/default/keymap.c ****                     register_code(KC_LEFT);
+ 272               		.loc 1 201 21 is_stmt 0 view .LVU59
+ 273 00e4 0E94 0000 		call register_mods
+ 274               	.LVL32:
+ 202:keyboards/sofle/keymaps/default/keymap.c ****                 }
+ 275               		.loc 1 202 21 is_stmt 1 view .LVU60
+ 276 00e8 80E5      		ldi r24,lo8(80)
+ 277               	.L64:
+ 221:keyboards/sofle/keymaps/default/keymap.c ****                 }
+ 278               		.loc 1 221 21 is_stmt 0 view .LVU61
+ 279 00ea 0E94 0000 		call register_code
+ 280               	.LVL33:
+ 281 00ee 00C0      		rjmp .L38
+ 282               	.LVL34:
+ 283               	.L25:
+ 205:keyboards/sofle/keymaps/default/keymap.c ****                     unregister_mods(mod_config(MOD_LALT));
+ 284               		.loc 1 205 17 is_stmt 1 view .LVU62
+ 205:keyboards/sofle/keymaps/default/keymap.c ****                     unregister_mods(mod_config(MOD_LALT));
+ 285               		.loc 1 205 20 is_stmt 0 view .LVU63
+ 286 00f0 8823      		tst r24
+ 287 00f2 01F0      		breq .L27
+ 206:keyboards/sofle/keymaps/default/keymap.c ****                     unregister_code(KC_LEFT);
+ 288               		.loc 1 206 21 is_stmt 1 view .LVU64
+ 289 00f4 84E0      		ldi r24,lo8(4)
+ 290               	.L67:
+ 209:keyboards/sofle/keymaps/default/keymap.c ****                     unregister_code(KC_LEFT);
+ 291               		.loc 1 209 21 is_stmt 0 view .LVU65
+ 292 00f6 0E94 0000 		call mod_config
+ 293               	.LVL35:
+ 209:keyboards/sofle/keymaps/default/keymap.c ****                     unregister_code(KC_LEFT);
+ 294               		.loc 1 209 21 view .LVU66
+ 295 00fa 0E94 0000 		call unregister_mods
+ 296               	.LVL36:
+ 210:keyboards/sofle/keymaps/default/keymap.c ****                 }
+ 297               		.loc 1 210 21 is_stmt 1 view .LVU67
+ 298 00fe 80E5      		ldi r24,lo8(80)
+ 299               	.L63:
+ 275:keyboards/sofle/keymaps/default/keymap.c ****             }
+ 300               		.loc 1 275 17 is_stmt 0 view .LVU68
+ 301 0100 0E94 0000 		call unregister_code
+ 302               	.LVL37:
+ 303 0104 00C0      		rjmp .L38
+ 304               	.LVL38:
+ 305               	.L27:
+ 209:keyboards/sofle/keymaps/default/keymap.c ****                     unregister_code(KC_LEFT);
+ 306               		.loc 1 209 21 is_stmt 1 view .LVU69
+ 307 0106 81E0      		ldi r24,lo8(1)
+ 308 0108 00C0      		rjmp .L67
+ 309               	.L15:
+ 215:keyboards/sofle/keymaps/default/keymap.c ****                 if (keymap_config.swap_lctl_lgui) {
+ 310               		.loc 1 215 14 view .LVU70
+ 197:keyboards/sofle/keymaps/default/keymap.c ****                     register_mods(mod_config(MOD_LALT));
+ 311               		.loc 1 197 21 is_stmt 0 view .LVU71
+ 312 010a 8091 0000 		lds r24,keymap_config+1
+ 313 010e 8170      		andi r24,lo8(1)
+ 215:keyboards/sofle/keymaps/default/keymap.c ****                 if (keymap_config.swap_lctl_lgui) {
+ 314               		.loc 1 215 17 view .LVU72
+ 315 0110 CC23      		tst r28
+ 316 0112 01F0      		breq .L28
+ 216:keyboards/sofle/keymaps/default/keymap.c ****                     register_mods(mod_config(MOD_LALT));
+ 317               		.loc 1 216 17 is_stmt 1 view .LVU73
+ 216:keyboards/sofle/keymaps/default/keymap.c ****                     register_mods(mod_config(MOD_LALT));
+ 318               		.loc 1 216 20 is_stmt 0 view .LVU74
+ 319 0114 8823      		tst r24
+ 320 0116 01F0      		breq .L29
+ 217:keyboards/sofle/keymaps/default/keymap.c ****                     register_code(KC_RIGHT);
+ 321               		.loc 1 217 21 is_stmt 1 view .LVU75
+ 322 0118 84E0      		ldi r24,lo8(4)
+ 323 011a 0E94 0000 		call mod_config
+ 324               	.LVL39:
+ 217:keyboards/sofle/keymaps/default/keymap.c ****                     register_code(KC_RIGHT);
+ 325               		.loc 1 217 21 is_stmt 0 view .LVU76
+ 326 011e 0E94 0000 		call register_mods
+ 327               	.LVL40:
+ 218:keyboards/sofle/keymaps/default/keymap.c ****                 } else {
+ 328               		.loc 1 218 21 is_stmt 1 view .LVU77
+ 329 0122 8FE4      		ldi r24,lo8(79)
+ 330 0124 00C0      		rjmp .L60
+ 331               	.LVL41:
+ 332               	.L29:
+ 220:keyboards/sofle/keymaps/default/keymap.c ****                     register_code(KC_RIGHT);
+ 333               		.loc 1 220 21 view .LVU78
+ 334 0126 81E0      		ldi r24,lo8(1)
+ 335 0128 0E94 0000 		call mod_config
+ 336               	.LVL42:
+ 220:keyboards/sofle/keymaps/default/keymap.c ****                     register_code(KC_RIGHT);
+ 337               		.loc 1 220 21 is_stmt 0 view .LVU79
+ 338 012c 0E94 0000 		call register_mods
+ 339               	.LVL43:
+ 221:keyboards/sofle/keymaps/default/keymap.c ****                 }
+ 340               		.loc 1 221 21 is_stmt 1 view .LVU80
+ 341 0130 8FE4      		ldi r24,lo8(79)
+ 342 0132 00C0      		rjmp .L64
+ 343               	.LVL44:
+ 344               	.L28:
+ 224:keyboards/sofle/keymaps/default/keymap.c ****                     unregister_mods(mod_config(MOD_LALT));
+ 345               		.loc 1 224 17 view .LVU81
+ 224:keyboards/sofle/keymaps/default/keymap.c ****                     unregister_mods(mod_config(MOD_LALT));
+ 346               		.loc 1 224 20 is_stmt 0 view .LVU82
+ 347 0134 8823      		tst r24
+ 348 0136 01F0      		breq .L30
+ 225:keyboards/sofle/keymaps/default/keymap.c ****                     unregister_code(KC_RIGHT);
+ 349               		.loc 1 225 21 is_stmt 1 view .LVU83
+ 350 0138 84E0      		ldi r24,lo8(4)
+ 351               	.L68:
+ 228:keyboards/sofle/keymaps/default/keymap.c ****                     unregister_code(KC_RIGHT);
+ 352               		.loc 1 228 21 is_stmt 0 view .LVU84
+ 353 013a 0E94 0000 		call mod_config
+ 354               	.LVL45:
+ 228:keyboards/sofle/keymaps/default/keymap.c ****                     unregister_code(KC_RIGHT);
+ 355               		.loc 1 228 21 view .LVU85
+ 356 013e 0E94 0000 		call unregister_mods
+ 357               	.LVL46:
+ 229:keyboards/sofle/keymaps/default/keymap.c ****                 }
+ 358               		.loc 1 229 21 is_stmt 1 view .LVU86
+ 359 0142 8FE4      		ldi r24,lo8(79)
+ 360 0144 00C0      		rjmp .L63
+ 361               	.LVL47:
+ 362               	.L30:
+ 228:keyboards/sofle/keymaps/default/keymap.c ****                     unregister_code(KC_RIGHT);
+ 363               		.loc 1 228 21 view .LVU87
+ 364 0146 81E0      		ldi r24,lo8(1)
+ 365 0148 00C0      		rjmp .L68
+ 366               	.L14:
+ 234:keyboards/sofle/keymaps/default/keymap.c ****                 if (keymap_config.swap_lctl_lgui) {
+ 367               		.loc 1 234 13 view .LVU88
+ 197:keyboards/sofle/keymaps/default/keymap.c ****                     register_mods(mod_config(MOD_LALT));
+ 368               		.loc 1 197 21 is_stmt 0 view .LVU89
+ 369 014a 8091 0000 		lds r24,keymap_config+1
+ 370 014e 8170      		andi r24,lo8(1)
+ 234:keyboards/sofle/keymaps/default/keymap.c ****                 if (keymap_config.swap_lctl_lgui) {
+ 371               		.loc 1 234 16 view .LVU90
+ 372 0150 CC23      		tst r28
+ 373 0152 01F0      		breq .L31
+ 235:keyboards/sofle/keymaps/default/keymap.c ****                      //CMD-arrow on Mac, but we have CTL and GUI swapped
+ 374               		.loc 1 235 17 is_stmt 1 view .LVU91
+ 235:keyboards/sofle/keymaps/default/keymap.c ****                      //CMD-arrow on Mac, but we have CTL and GUI swapped
+ 375               		.loc 1 235 20 is_stmt 0 view .LVU92
+ 376 0154 8111      		cpse r24,__zero_reg__
+ 377 0156 00C0      		rjmp .L26
+ 240:keyboards/sofle/keymaps/default/keymap.c ****                 }
+ 378               		.loc 1 240 21 is_stmt 1 view .LVU93
+ 379 0158 8AE4      		ldi r24,lo8(74)
+ 380 015a 00C0      		rjmp .L60
+ 381               	.L31:
+ 243:keyboards/sofle/keymaps/default/keymap.c ****                     unregister_mods(mod_config(MOD_LCTL));
+ 382               		.loc 1 243 17 view .LVU94
+ 243:keyboards/sofle/keymaps/default/keymap.c ****                     unregister_mods(mod_config(MOD_LCTL));
+ 383               		.loc 1 243 20 is_stmt 0 view .LVU95
+ 384 015c 8111      		cpse r24,__zero_reg__
+ 385 015e 00C0      		rjmp .L27
+ 247:keyboards/sofle/keymaps/default/keymap.c ****                 }
+ 386               		.loc 1 247 21 is_stmt 1 view .LVU96
+ 387 0160 8AE4      		ldi r24,lo8(74)
+ 388 0162 00C0      		rjmp .L63
+ 389               	.L13:
+ 252:keyboards/sofle/keymaps/default/keymap.c ****                 if (keymap_config.swap_lctl_lgui) {
+ 390               		.loc 1 252 13 view .LVU97
+ 197:keyboards/sofle/keymaps/default/keymap.c ****                     register_mods(mod_config(MOD_LALT));
+ 391               		.loc 1 197 21 is_stmt 0 view .LVU98
+ 392 0164 8091 0000 		lds r24,keymap_config+1
+ 393 0168 8170      		andi r24,lo8(1)
+ 252:keyboards/sofle/keymaps/default/keymap.c ****                 if (keymap_config.swap_lctl_lgui) {
+ 394               		.loc 1 252 16 view .LVU99
+ 395 016a CC23      		tst r28
+ 396 016c 01F0      		breq .L32
+ 253:keyboards/sofle/keymaps/default/keymap.c ****                     //CMD-arrow on Mac, but we have CTL and GUI swapped
+ 397               		.loc 1 253 17 is_stmt 1 view .LVU100
+ 253:keyboards/sofle/keymaps/default/keymap.c ****                     //CMD-arrow on Mac, but we have CTL and GUI swapped
+ 398               		.loc 1 253 20 is_stmt 0 view .LVU101
+ 399 016e 8111      		cpse r24,__zero_reg__
+ 400 0170 00C0      		rjmp .L29
+ 258:keyboards/sofle/keymaps/default/keymap.c ****                 }
+ 401               		.loc 1 258 21 is_stmt 1 view .LVU102
+ 402 0172 8DE4      		ldi r24,lo8(77)
+ 403 0174 00C0      		rjmp .L60
+ 404               	.L32:
+ 261:keyboards/sofle/keymaps/default/keymap.c ****                     unregister_mods(mod_config(MOD_LCTL));
+ 405               		.loc 1 261 17 view .LVU103
+ 261:keyboards/sofle/keymaps/default/keymap.c ****                     unregister_mods(mod_config(MOD_LCTL));
+ 406               		.loc 1 261 20 is_stmt 0 view .LVU104
+ 407 0176 8111      		cpse r24,__zero_reg__
+ 408 0178 00C0      		rjmp .L30
+ 265:keyboards/sofle/keymaps/default/keymap.c ****                 }
+ 409               		.loc 1 265 21 is_stmt 1 view .LVU105
+ 410 017a 8DE4      		ldi r24,lo8(77)
+ 411 017c 00C0      		rjmp .L63
+ 412               	.L11:
+ 270:keyboards/sofle/keymaps/default/keymap.c ****                 register_mods(mod_config(MOD_LCTL));
+ 413               		.loc 1 270 13 view .LVU106
+ 271:keyboards/sofle/keymaps/default/keymap.c ****                 register_code(KC_BSPC);
+ 414               		.loc 1 271 17 is_stmt 0 view .LVU107
+ 415 017e 81E0      		ldi r24,lo8(1)
+ 270:keyboards/sofle/keymaps/default/keymap.c ****                 register_mods(mod_config(MOD_LCTL));
+ 416               		.loc 1 270 16 view .LVU108
+ 417 0180 CC23      		tst r28
+ 418 0182 01F0      		breq .L33
+ 271:keyboards/sofle/keymaps/default/keymap.c ****                 register_code(KC_BSPC);
+ 419               		.loc 1 271 17 is_stmt 1 view .LVU109
+ 420 0184 0E94 0000 		call mod_config
+ 421               	.LVL48:
+ 271:keyboards/sofle/keymaps/default/keymap.c ****                 register_code(KC_BSPC);
+ 422               		.loc 1 271 17 is_stmt 0 view .LVU110
+ 423 0188 0E94 0000 		call register_mods
+ 424               	.LVL49:
+ 272:keyboards/sofle/keymaps/default/keymap.c ****             } else {
+ 425               		.loc 1 272 17 is_stmt 1 view .LVU111
+ 426 018c 8AE2      		ldi r24,lo8(42)
+ 427 018e 00C0      		rjmp .L60
+ 428               	.LVL50:
+ 429               	.L33:
+ 274:keyboards/sofle/keymaps/default/keymap.c ****                 unregister_code(KC_BSPC);
+ 430               		.loc 1 274 17 view .LVU112
+ 431 0190 0E94 0000 		call mod_config
+ 432               	.LVL51:
+ 274:keyboards/sofle/keymaps/default/keymap.c ****                 unregister_code(KC_BSPC);
+ 433               		.loc 1 274 17 is_stmt 0 view .LVU113
+ 434 0194 0E94 0000 		call unregister_mods
+ 435               	.LVL52:
+ 275:keyboards/sofle/keymaps/default/keymap.c ****             }
+ 436               		.loc 1 275 17 is_stmt 1 view .LVU114
+ 437 0198 8AE2      		ldi r24,lo8(42)
+ 438 019a 00C0      		rjmp .L63
+ 439               	.LVL53:
+ 440               	.L6:
+ 279:keyboards/sofle/keymaps/default/keymap.c ****                 register_mods(mod_config(MOD_LCTL));
+ 441               		.loc 1 279 13 view .LVU115
+ 279:keyboards/sofle/keymaps/default/keymap.c ****                 register_mods(mod_config(MOD_LCTL));
+ 442               		.loc 1 279 30 is_stmt 0 view .LVU116
+ 443 019c 1296      		adiw r26,2
+ 444 019e CC91      		ld r28,X
+ 280:keyboards/sofle/keymaps/default/keymap.c ****                 register_code(KC_C);
+ 445               		.loc 1 280 17 view .LVU117
+ 446 01a0 81E0      		ldi r24,lo8(1)
+ 279:keyboards/sofle/keymaps/default/keymap.c ****                 register_mods(mod_config(MOD_LCTL));
+ 447               		.loc 1 279 16 view .LVU118
+ 448 01a2 CC23      		tst r28
+ 449 01a4 01F0      		breq .L34
+ 280:keyboards/sofle/keymaps/default/keymap.c ****                 register_code(KC_C);
+ 450               		.loc 1 280 17 is_stmt 1 view .LVU119
+ 451 01a6 0E94 0000 		call mod_config
+ 452               	.LVL54:
+ 280:keyboards/sofle/keymaps/default/keymap.c ****                 register_code(KC_C);
+ 453               		.loc 1 280 17 is_stmt 0 view .LVU120
+ 454 01aa 0E94 0000 		call register_mods
+ 455               	.LVL55:
+ 281:keyboards/sofle/keymaps/default/keymap.c ****             } else {
+ 456               		.loc 1 281 17 is_stmt 1 view .LVU121
+ 457 01ae 86E0      		ldi r24,lo8(6)
+ 458               	.L58:
+ 309:keyboards/sofle/keymaps/default/keymap.c ****             } else {
+ 459               		.loc 1 309 17 is_stmt 0 view .LVU122
+ 460 01b0 0E94 0000 		call register_code
+ 461               	.LVL56:
+ 462 01b4 00C0      		rjmp .L59
+ 463               	.LVL57:
+ 464               	.L34:
+ 283:keyboards/sofle/keymaps/default/keymap.c ****                 unregister_code(KC_C);
+ 465               		.loc 1 283 17 is_stmt 1 view .LVU123
+ 466 01b6 0E94 0000 		call mod_config
+ 467               	.LVL58:
+ 283:keyboards/sofle/keymaps/default/keymap.c ****                 unregister_code(KC_C);
+ 468               		.loc 1 283 17 is_stmt 0 view .LVU124
+ 469 01ba 0E94 0000 		call unregister_mods
+ 470               	.LVL59:
+ 284:keyboards/sofle/keymaps/default/keymap.c ****             }
+ 471               		.loc 1 284 17 is_stmt 1 view .LVU125
+ 472 01be 86E0      		ldi r24,lo8(6)
+ 473               	.L57:
+ 312:keyboards/sofle/keymaps/default/keymap.c ****             }
+ 474               		.loc 1 312 17 is_stmt 0 view .LVU126
+ 475 01c0 0E94 0000 		call unregister_code
+ 476               	.LVL60:
+ 477 01c4 00C0      		rjmp .L3
+ 478               	.LVL61:
+ 479               	.L35:
+ 292:keyboards/sofle/keymaps/default/keymap.c ****                 unregister_code(KC_V);
+ 480               		.loc 1 292 17 is_stmt 1 view .LVU127
+ 481 01c6 0E94 0000 		call mod_config
+ 482               	.LVL62:
+ 292:keyboards/sofle/keymaps/default/keymap.c ****                 unregister_code(KC_V);
+ 483               		.loc 1 292 17 is_stmt 0 view .LVU128
+ 484 01ca 0E94 0000 		call unregister_mods
+ 485               	.LVL63:
+ 293:keyboards/sofle/keymaps/default/keymap.c ****             }
+ 486               		.loc 1 293 17 is_stmt 1 view .LVU129
+ 487 01ce 89E1      		ldi r24,lo8(25)
+ 488 01d0 00C0      		rjmp .L57
+ 489               	.LVL64:
+ 490               	.L9:
+ 297:keyboards/sofle/keymaps/default/keymap.c ****                 register_mods(mod_config(MOD_LCTL));
+ 491               		.loc 1 297 13 view .LVU130
+ 297:keyboards/sofle/keymaps/default/keymap.c ****                 register_mods(mod_config(MOD_LCTL));
+ 492               		.loc 1 297 30 is_stmt 0 view .LVU131
+ 493 01d2 1296      		adiw r26,2
+ 494 01d4 CC91      		ld r28,X
+ 298:keyboards/sofle/keymaps/default/keymap.c ****                 register_code(KC_X);
+ 495               		.loc 1 298 17 view .LVU132
+ 496 01d6 81E0      		ldi r24,lo8(1)
+ 297:keyboards/sofle/keymaps/default/keymap.c ****                 register_mods(mod_config(MOD_LCTL));
+ 497               		.loc 1 297 16 view .LVU133
+ 498 01d8 CC23      		tst r28
+ 499 01da 01F0      		breq .L36
+ 298:keyboards/sofle/keymaps/default/keymap.c ****                 register_code(KC_X);
+ 500               		.loc 1 298 17 is_stmt 1 view .LVU134
+ 501 01dc 0E94 0000 		call mod_config
+ 502               	.LVL65:
+ 298:keyboards/sofle/keymaps/default/keymap.c ****                 register_code(KC_X);
+ 503               		.loc 1 298 17 is_stmt 0 view .LVU135
+ 504 01e0 0E94 0000 		call register_mods
+ 505               	.LVL66:
+ 299:keyboards/sofle/keymaps/default/keymap.c ****             } else {
+ 506               		.loc 1 299 17 is_stmt 1 view .LVU136
+ 507 01e4 8BE1      		ldi r24,lo8(27)
+ 508 01e6 00C0      		rjmp .L58
+ 509               	.LVL67:
+ 510               	.L36:
+ 301:keyboards/sofle/keymaps/default/keymap.c ****                 unregister_code(KC_X);
+ 511               		.loc 1 301 17 view .LVU137
+ 512 01e8 0E94 0000 		call mod_config
+ 513               	.LVL68:
+ 301:keyboards/sofle/keymaps/default/keymap.c ****                 unregister_code(KC_X);
+ 514               		.loc 1 301 17 is_stmt 0 view .LVU138
+ 515 01ec 0E94 0000 		call unregister_mods
+ 516               	.LVL69:
+ 302:keyboards/sofle/keymaps/default/keymap.c ****             }
+ 517               		.loc 1 302 17 is_stmt 1 view .LVU139
+ 518 01f0 8BE1      		ldi r24,lo8(27)
+ 519 01f2 00C0      		rjmp .L57
+ 520               	.LVL70:
+ 521               	.L8:
+ 305:keyboards/sofle/keymaps/default/keymap.c ****         case KC_UNDO:
+ 522               		.loc 1 305 13 view .LVU140
+ 307:keyboards/sofle/keymaps/default/keymap.c ****                 register_mods(mod_config(MOD_LCTL));
+ 523               		.loc 1 307 13 view .LVU141
+ 307:keyboards/sofle/keymaps/default/keymap.c ****                 register_mods(mod_config(MOD_LCTL));
+ 524               		.loc 1 307 30 is_stmt 0 view .LVU142
+ 525 01f4 1296      		adiw r26,2
+ 526 01f6 CC91      		ld r28,X
+ 308:keyboards/sofle/keymaps/default/keymap.c ****                 register_code(KC_Z);
+ 527               		.loc 1 308 17 view .LVU143
+ 528 01f8 81E0      		ldi r24,lo8(1)
+ 307:keyboards/sofle/keymaps/default/keymap.c ****                 register_mods(mod_config(MOD_LCTL));
+ 529               		.loc 1 307 16 view .LVU144
+ 530 01fa CC23      		tst r28
+ 531 01fc 01F0      		breq .L37
+ 308:keyboards/sofle/keymaps/default/keymap.c ****                 register_code(KC_Z);
+ 532               		.loc 1 308 17 is_stmt 1 view .LVU145
+ 533 01fe 0E94 0000 		call mod_config
+ 534               	.LVL71:
+ 308:keyboards/sofle/keymaps/default/keymap.c ****                 register_code(KC_Z);
+ 535               		.loc 1 308 17 is_stmt 0 view .LVU146
+ 536 0202 0E94 0000 		call register_mods
+ 537               	.LVL72:
+ 309:keyboards/sofle/keymaps/default/keymap.c ****             } else {
+ 538               		.loc 1 309 17 is_stmt 1 view .LVU147
+ 539 0206 8DE1      		ldi r24,lo8(29)
+ 540 0208 00C0      		rjmp .L58
+ 541               	.LVL73:
+ 542               	.L37:
+ 311:keyboards/sofle/keymaps/default/keymap.c ****                 unregister_code(KC_Z);
+ 543               		.loc 1 311 17 view .LVU148
+ 544 020a 0E94 0000 		call mod_config
+ 545               	.LVL74:
+ 311:keyboards/sofle/keymaps/default/keymap.c ****                 unregister_code(KC_Z);
+ 546               		.loc 1 311 17 is_stmt 0 view .LVU149
+ 547 020e 0E94 0000 		call unregister_mods
+ 548               	.LVL75:
+ 312:keyboards/sofle/keymaps/default/keymap.c ****             }
+ 549               		.loc 1 312 17 is_stmt 1 view .LVU150
+ 550 0212 8DE1      		ldi r24,lo8(29)
+ 551 0214 00C0      		rjmp .L57
+ 552               		.cfi_endproc
+ 553               	.LFE28:
+ 555               		.section	.text.encoder_update_user,"ax",@progbits
+ 556               	.global	encoder_update_user
+ 558               	encoder_update_user:
+ 559               	.LVL76:
+ 560               	.LFB29:
+ 319:keyboards/sofle/keymaps/default/keymap.c **** 
+ 320:keyboards/sofle/keymaps/default/keymap.c **** #ifdef ENCODER_ENABLE
+ 321:keyboards/sofle/keymaps/default/keymap.c **** 
+ 322:keyboards/sofle/keymaps/default/keymap.c **** bool encoder_update_user(uint8_t index, bool clockwise) {
+ 561               		.loc 1 322 57 view -0
+ 562               		.cfi_startproc
+ 563               	/* prologue: function */
+ 564               	/* frame size = 0 */
+ 565               	/* stack size = 0 */
+ 566               	.L__stack_usage = 0
+ 323:keyboards/sofle/keymaps/default/keymap.c ****     if (index == 0) {
+ 567               		.loc 1 323 5 view .LVU152
+ 568               		.loc 1 323 8 is_stmt 0 view .LVU153
+ 569 0000 8111      		cpse r24,__zero_reg__
+ 570 0002 00C0      		rjmp .L70
+ 324:keyboards/sofle/keymaps/default/keymap.c ****         if (clockwise) {
+ 571               		.loc 1 324 9 is_stmt 1 view .LVU154
+ 325:keyboards/sofle/keymaps/default/keymap.c ****             tap_code(KC_VOLU);
+ 572               		.loc 1 325 13 is_stmt 0 view .LVU155
+ 573 0004 89EA      		ldi r24,lo8(-87)
+ 574               	.LVL77:
+ 324:keyboards/sofle/keymaps/default/keymap.c ****         if (clockwise) {
+ 575               		.loc 1 324 12 view .LVU156
+ 576 0006 6111      		cpse r22,__zero_reg__
+ 577 0008 00C0      		rjmp .L73
+ 326:keyboards/sofle/keymaps/default/keymap.c ****         } else {
+ 327:keyboards/sofle/keymaps/default/keymap.c ****             tap_code(KC_VOLD);
+ 578               		.loc 1 327 13 is_stmt 1 view .LVU157
+ 579 000a 8AEA      		ldi r24,lo8(-86)
+ 580               	.L73:
+ 328:keyboards/sofle/keymaps/default/keymap.c ****         }
+ 329:keyboards/sofle/keymaps/default/keymap.c ****     } else if (index == 1) {
+ 330:keyboards/sofle/keymaps/default/keymap.c ****         if (clockwise) {
+ 331:keyboards/sofle/keymaps/default/keymap.c ****             tap_code(KC_UNDO);
+ 581               		.loc 1 331 13 is_stmt 0 view .LVU158
+ 582 000c 0E94 0000 		call tap_code
+ 583               	.LVL78:
+ 584               	.L72:
+ 332:keyboards/sofle/keymaps/default/keymap.c ****         } else {
+ 333:keyboards/sofle/keymaps/default/keymap.c ****             tap_code(KC_UNDO);
+ 334:keyboards/sofle/keymaps/default/keymap.c ****         }
+ 335:keyboards/sofle/keymaps/default/keymap.c ****     }
+ 336:keyboards/sofle/keymaps/default/keymap.c ****     return true;
+ 585               		.loc 1 336 5 is_stmt 1 view .LVU159
+ 337:keyboards/sofle/keymaps/default/keymap.c **** }
+ 586               		.loc 1 337 1 is_stmt 0 view .LVU160
+ 587 0010 81E0      		ldi r24,lo8(1)
+ 588               	/* epilogue start */
+ 589 0012 0895      		ret
+ 590               	.LVL79:
+ 591               	.L70:
+ 329:keyboards/sofle/keymaps/default/keymap.c ****         if (clockwise) {
+ 592               		.loc 1 329 12 is_stmt 1 view .LVU161
+ 329:keyboards/sofle/keymaps/default/keymap.c ****         if (clockwise) {
+ 593               		.loc 1 329 15 is_stmt 0 view .LVU162
+ 594 0014 8130      		cpi r24,lo8(1)
+ 595 0016 01F4      		brne .L72
+ 330:keyboards/sofle/keymaps/default/keymap.c ****             tap_code(KC_UNDO);
+ 596               		.loc 1 330 9 is_stmt 1 view .LVU163
+ 331:keyboards/sofle/keymaps/default/keymap.c ****         } else {
+ 597               		.loc 1 331 13 view .LVU164
+ 598 0018 8AE7      		ldi r24,lo8(122)
+ 599               	.LVL80:
+ 331:keyboards/sofle/keymaps/default/keymap.c ****         } else {
+ 600               		.loc 1 331 13 is_stmt 0 view .LVU165
+ 601 001a 00C0      		rjmp .L73
+ 602               		.cfi_endproc
+ 603               	.LFE29:
+ 605               		.section	.progmem.data.qmk_logo.0,"a"
+ 608               	qmk_logo.0:
+ 609 0000 8081 8283 		.string	"\200\201\202\203\204\205\206\207\210\211\212\213\214\215\216\217\220\221\222\223\224\240\
+ 609      8485 8687 
+ 609      8889 8A8B 
+ 609      8C8D 8E8F 
+ 609      9091 9293 
+ 610               	.global	keymaps
+ 611               		.section	.progmem.data.keymaps,"a"
+ 614               	keymaps:
+ 615 0000 3500      		.word	53
+ 616 0002 1E00      		.word	30
+ 617 0004 1F00      		.word	31
+ 618 0006 2000      		.word	32
+ 619 0008 2100      		.word	33
+ 620 000a 2200      		.word	34
+ 621 000c 2900      		.word	41
+ 622 000e 1400      		.word	20
+ 623 0010 1A00      		.word	26
+ 624 0012 0800      		.word	8
+ 625 0014 1500      		.word	21
+ 626 0016 1700      		.word	23
+ 627 0018 2B00      		.word	43
+ 628 001a 0400      		.word	4
+ 629 001c 1600      		.word	22
+ 630 001e 0700      		.word	7
+ 631 0020 0900      		.word	9
+ 632 0022 0A00      		.word	10
+ 633 0024 E100      		.word	225
+ 634 0026 1D00      		.word	29
+ 635 0028 1B00      		.word	27
+ 636 002a 0600      		.word	6
+ 637 002c 1900      		.word	25
+ 638 002e 0500      		.word	5
+ 639 0030 E300      		.word	227
+ 640 0032 E200      		.word	226
+ 641 0034 E000      		.word	224
+ 642 0036 655D      		.word	23909
+ 643 0038 2800      		.word	40
+ 644 003a A800      		.word	168
+ 645 003c 3500      		.word	53
+ 646 003e 2700      		.word	39
+ 647 0040 2600      		.word	38
+ 648 0042 2500      		.word	37
+ 649 0044 2400      		.word	36
+ 650 0046 2300      		.word	35
+ 651 0048 2A00      		.word	42
+ 652 004a 1300      		.word	19
+ 653 004c 1200      		.word	18
+ 654 004e 0C00      		.word	12
+ 655 0050 1800      		.word	24
+ 656 0052 1C00      		.word	28
+ 657 0054 3400      		.word	52
+ 658 0056 3300      		.word	51
+ 659 0058 0F00      		.word	15
+ 660 005a 0E00      		.word	14
+ 661 005c 0D00      		.word	13
+ 662 005e 0B00      		.word	11
+ 663 0060 E500      		.word	229
+ 664 0062 3800      		.word	56
+ 665 0064 3700      		.word	55
+ 666 0066 3600      		.word	54
+ 667 0068 1000      		.word	16
+ 668 006a 1100      		.word	17
+ 669 006c E700      		.word	231
+ 670 006e E600      		.word	230
+ 671 0070 E400      		.word	228
+ 672 0072 665D      		.word	23910
+ 673 0074 2C00      		.word	44
+ 674 0076 0000      		.word	0
+ 675 0078 3500      		.word	53
+ 676 007a 1E00      		.word	30
+ 677 007c 1F00      		.word	31
+ 678 007e 2000      		.word	32
+ 679 0080 2100      		.word	33
+ 680 0082 2200      		.word	34
+ 681 0084 2900      		.word	41
+ 682 0086 1400      		.word	20
+ 683 0088 1A00      		.word	26
+ 684 008a 0900      		.word	9
+ 685 008c 1300      		.word	19
+ 686 008e 0A00      		.word	10
+ 687 0090 2B00      		.word	43
+ 688 0092 0400      		.word	4
+ 689 0094 1500      		.word	21
+ 690 0096 1600      		.word	22
+ 691 0098 1700      		.word	23
+ 692 009a 0700      		.word	7
+ 693 009c E100      		.word	225
+ 694 009e 1D00      		.word	29
+ 695 00a0 1B00      		.word	27
+ 696 00a2 0600      		.word	6
+ 697 00a4 1900      		.word	25
+ 698 00a6 0500      		.word	5
+ 699 00a8 E300      		.word	227
+ 700 00aa E200      		.word	226
+ 701 00ac E000      		.word	224
+ 702 00ae 655D      		.word	23909
+ 703 00b0 2800      		.word	40
+ 704 00b2 A800      		.word	168
+ 705 00b4 3500      		.word	53
+ 706 00b6 2700      		.word	39
+ 707 00b8 2600      		.word	38
+ 708 00ba 2500      		.word	37
+ 709 00bc 2400      		.word	36
+ 710 00be 2300      		.word	35
+ 711 00c0 2A00      		.word	42
+ 712 00c2 3300      		.word	51
+ 713 00c4 1C00      		.word	28
+ 714 00c6 1800      		.word	24
+ 715 00c8 0F00      		.word	15
+ 716 00ca 0D00      		.word	13
+ 717 00cc 3400      		.word	52
+ 718 00ce 1200      		.word	18
+ 719 00d0 0C00      		.word	12
+ 720 00d2 0800      		.word	8
+ 721 00d4 1100      		.word	17
+ 722 00d6 0B00      		.word	11
+ 723 00d8 E500      		.word	229
+ 724 00da 3800      		.word	56
+ 725 00dc 3700      		.word	55
+ 726 00de 3600      		.word	54
+ 727 00e0 1000      		.word	16
+ 728 00e2 0E00      		.word	14
+ 729 00e4 E700      		.word	231
+ 730 00e6 E600      		.word	230
+ 731 00e8 E400      		.word	228
+ 732 00ea 665D      		.word	23910
+ 733 00ec 2C00      		.word	44
+ 734 00ee 0000      		.word	0
+ 735 00f0 0100      		.word	1
+ 736 00f2 3A00      		.word	58
+ 737 00f4 3B00      		.word	59
+ 738 00f6 3C00      		.word	60
+ 739 00f8 3D00      		.word	61
+ 740 00fa 3E00      		.word	62
+ 741 00fc 3500      		.word	53
+ 742 00fe 1E00      		.word	30
+ 743 0100 1F00      		.word	31
+ 744 0102 2000      		.word	32
+ 745 0104 2100      		.word	33
+ 746 0106 2200      		.word	34
+ 747 0108 0100      		.word	1
+ 748 010a 1E02      		.word	542
+ 749 010c 1F02      		.word	543
+ 750 010e 2002      		.word	544
+ 751 0110 2102      		.word	545
+ 752 0112 2202      		.word	546
+ 753 0114 0100      		.word	1
+ 754 0116 2E00      		.word	46
+ 755 0118 2D00      		.word	45
+ 756 011a 2E02      		.word	558
+ 757 011c 2F02      		.word	559
+ 758 011e 3002      		.word	560
+ 759 0120 0100      		.word	1
+ 760 0122 0100      		.word	1
+ 761 0124 0100      		.word	1
+ 762 0126 0100      		.word	1
+ 763 0128 0100      		.word	1
+ 764 012a 0100      		.word	1
+ 765 012c 4400      		.word	68
+ 766 012e 4300      		.word	67
+ 767 0130 4200      		.word	66
+ 768 0132 4100      		.word	65
+ 769 0134 4000      		.word	64
+ 770 0136 3F00      		.word	63
+ 771 0138 4500      		.word	69
+ 772 013a 2700      		.word	39
+ 773 013c 2600      		.word	38
+ 774 013e 2500      		.word	37
+ 775 0140 2400      		.word	36
+ 776 0142 2300      		.word	35
+ 777 0144 3102      		.word	561
+ 778 0146 2702      		.word	551
+ 779 0148 2602      		.word	550
+ 780 014a 2502      		.word	549
+ 781 014c 2402      		.word	548
+ 782 014e 2302      		.word	547
+ 783 0150 0100      		.word	1
+ 784 0152 3100      		.word	49
+ 785 0154 3302      		.word	563
+ 786 0156 3300      		.word	51
+ 787 0158 3000      		.word	48
+ 788 015a 2F00      		.word	47
+ 789 015c 0100      		.word	1
+ 790 015e 0100      		.word	1
+ 791 0160 0100      		.word	1
+ 792 0162 0100      		.word	1
+ 793 0164 0100      		.word	1
+ 794 0166 0100      		.word	1
+ 795 0168 0100      		.word	1
+ 796 016a 0100      		.word	1
+ 797 016c 0100      		.word	1
+ 798 016e 0100      		.word	1
+ 799 0170 0100      		.word	1
+ 800 0172 0100      		.word	1
+ 801 0174 0100      		.word	1
+ 802 0176 4900      		.word	73
+ 803 0178 4600      		.word	70
+ 804 017a 6500      		.word	101
+ 805 017c 0000      		.word	0
+ 806 017e 0000      		.word	0
+ 807 0180 0100      		.word	1
+ 808 0182 E200      		.word	226
+ 809 0184 E000      		.word	224
+ 810 0186 E100      		.word	225
+ 811 0188 0000      		.word	0
+ 812 018a 3900      		.word	57
+ 813 018c 0100      		.word	1
+ 814 018e 7A00      		.word	122
+ 815 0190 7B00      		.word	123
+ 816 0192 7C00      		.word	124
+ 817 0194 7D00      		.word	125
+ 818 0196 0000      		.word	0
+ 819 0198 0100      		.word	1
+ 820 019a 0100      		.word	1
+ 821 019c 0100      		.word	1
+ 822 019e 0100      		.word	1
+ 823 01a0 0100      		.word	1
+ 824 01a2 0100      		.word	1
+ 825 01a4 0100      		.word	1
+ 826 01a6 0100      		.word	1
+ 827 01a8 0100      		.word	1
+ 828 01aa 0100      		.word	1
+ 829 01ac 0100      		.word	1
+ 830 01ae 0100      		.word	1
+ 831 01b0 2A00      		.word	42
+ 832 01b2 6C5D      		.word	23916
+ 833 01b4 695D      		.word	23913
+ 834 01b6 5200      		.word	82
+ 835 01b8 685D      		.word	23912
+ 836 01ba 4B00      		.word	75
+ 837 01bc 2A00      		.word	42
+ 838 01be 4C00      		.word	76
+ 839 01c0 4F00      		.word	79
+ 840 01c2 5100      		.word	81
+ 841 01c4 5000      		.word	80
+ 842 01c6 4E00      		.word	78
+ 843 01c8 0100      		.word	1
+ 844 01ca 0000      		.word	0
+ 845 01cc 6B5D      		.word	23915
+ 846 01ce 0000      		.word	0
+ 847 01d0 6A5D      		.word	23914
+ 848 01d2 0000      		.word	0
+ 849 01d4 0100      		.word	1
+ 850 01d6 0100      		.word	1
+ 851 01d8 0100      		.word	1
+ 852 01da 0100      		.word	1
+ 853 01dc 0100      		.word	1
+ 854 01de 0100      		.word	1
+ 855 01e0 0000      		.word	0
+ 856 01e2 0000      		.word	0
+ 857 01e4 0000      		.word	0
+ 858 01e6 0000      		.word	0
+ 859 01e8 0000      		.word	0
+ 860 01ea 0000      		.word	0
+ 861 01ec 005C      		.word	23552
+ 862 01ee 0000      		.word	0
+ 863 01f0 635D      		.word	23907
+ 864 01f2 645D      		.word	23908
+ 865 01f4 015D      		.word	23809
+ 866 01f6 0000      		.word	0
+ 867 01f8 0000      		.word	0
+ 868 01fa 0000      		.word	0
+ 869 01fc 015D      		.word	23809
+ 870 01fe 0000      		.word	0
+ 871 0200 0000      		.word	0
+ 872 0202 0000      		.word	0
+ 873 0204 0000      		.word	0
+ 874 0206 0000      		.word	0
+ 875 0208 0000      		.word	0
+ 876 020a 0000      		.word	0
+ 877 020c 0000      		.word	0
+ 878 020e 0000      		.word	0
+ 879 0210 0100      		.word	1
+ 880 0212 0100      		.word	1
+ 881 0214 0100      		.word	1
+ 882 0216 0100      		.word	1
+ 883 0218 0100      		.word	1
+ 884 021a 0000      		.word	0
+ 885 021c 0000      		.word	0
+ 886 021e 0000      		.word	0
+ 887 0220 0000      		.word	0
+ 888 0222 0000      		.word	0
+ 889 0224 0000      		.word	0
+ 890 0226 0000      		.word	0
+ 891 0228 0000      		.word	0
+ 892 022a 0000      		.word	0
+ 893 022c 0000      		.word	0
+ 894 022e 0000      		.word	0
+ 895 0230 0000      		.word	0
+ 896 0232 0000      		.word	0
+ 897 0234 0000      		.word	0
+ 898 0236 0000      		.word	0
+ 899 0238 A900      		.word	169
+ 900 023a A800      		.word	168
+ 901 023c AA00      		.word	170
+ 902 023e 0000      		.word	0
+ 903 0240 0000      		.word	0
+ 904 0242 0000      		.word	0
+ 905 0244 AB00      		.word	171
+ 906 0246 AE00      		.word	174
+ 907 0248 AC00      		.word	172
+ 908 024a 0000      		.word	0
+ 909 024c 0100      		.word	1
+ 910 024e 0100      		.word	1
+ 911 0250 0100      		.word	1
+ 912 0252 0100      		.word	1
+ 913 0254 0100      		.word	1
+ 914 0256 0000      		.word	0
+ 915               		.text
+ 916               	.Letext0:
+ 917               		.file 2 "/usr/avr/include/stdint.h"
+ 918               		.file 3 "quantum/keyboard.h"
+ 919               		.file 4 "quantum/keycode.h"
+ 920               		.file 5 "quantum/action_code.h"
+ 921               		.file 6 "quantum/action.h"
+ 922               		.file 7 "quantum/keycode_config.h"
+ 923               		.file 8 "quantum/quantum_keycodes.h"
+ 924               		.file 9 "quantum/keymap.h"
+ 925               		.file 10 "quantum/action_layer.h"
+ 926               		.file 11 "quantum/quantum.h"
+ 927               		.file 12 "drivers/oled/oled_driver.h"
+ 928               		.file 13 "quantum/sequencer/sequencer.h"
+DEFINED SYMBOLS
+                            *ABS*:0000000000000000 keymap.c
+     /tmp/ccTyFcgv.s:2      *ABS*:000000000000003e __SP_H__
+     /tmp/ccTyFcgv.s:3      *ABS*:000000000000003d __SP_L__
+     /tmp/ccTyFcgv.s:4      *ABS*:000000000000003f __SREG__
+     /tmp/ccTyFcgv.s:5      *ABS*:0000000000000000 __tmp_reg__
+     /tmp/ccTyFcgv.s:6      *ABS*:0000000000000001 __zero_reg__
+     /tmp/ccTyFcgv.s:13     .text.oled_task_user:0000000000000000 oled_task_user
+     /tmp/ccTyFcgv.s:608    .progmem.data.qmk_logo.0:0000000000000000 qmk_logo.0
+     /tmp/ccTyFcgv.s:53     .text.process_record_user:0000000000000000 process_record_user
+     /tmp/ccTyFcgv.s:558    .text.encoder_update_user:0000000000000000 encoder_update_user
+     /tmp/ccTyFcgv.s:614    .progmem.data.keymaps:0000000000000000 keymaps
+
+UNDEFINED SYMBOLS
+is_keyboard_left
+oled_write_P
+oled_scroll_left
+__tablejump2__
+mod_config
+register_mods
+set_single_persistent_default_layer
+layer_on
+update_tri_layer
+layer_off
+keymap_config
+register_code
+unregister_mods
+unregister_code
+tap_code
